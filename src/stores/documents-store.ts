@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Document, DriveFile, DriveFileContent } from '@/lib/db/types';
+import { Document, DriveFileContent } from '@/lib/db/types';
 import { SyncStatus } from '@/components/processor/sync-status';
 
 interface DocumentsState {
@@ -7,7 +7,6 @@ interface DocumentsState {
   documents: Document[];
   selectedDocument: Document | null;
   documentContent: DriveFileContent | null;
-  driveFiles: DriveFile[];
   isLoading: boolean;
   isLoadingContent: boolean;
   syncStatus: SyncStatus;
@@ -19,7 +18,6 @@ interface DocumentsState {
   linkDriveFile: (projectId: string, driveFileId: string) => Promise<void>;
   unlinkDocument: (projectId: string, documentId: string) => Promise<void>;
   fetchDocumentContent: (fileId: string) => Promise<DriveFileContent>;
-  fetchDriveFiles: (folderId?: string, query?: string) => Promise<void>;
   checkForChanges: (projectId: string) => Promise<void>;
   refreshDocuments: (projectId: string) => Promise<void>;
   selectDocument: (document: Document | null) => void;
@@ -39,22 +37,12 @@ async function getAuthToken(): Promise<string> {
   return user.getIdToken();
 }
 
-// Helper function to get Google OAuth access token for Drive API
-async function getGoogleAccessToken(): Promise<string> {
-  const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
-  const token = await getDriveAccessToken();
-  if (!token) {
-    throw new Error('No Google OAuth access token available');
-  }
-  return token;
-}
 
 export const useDocumentsStore = create<DocumentsState>((set, get) => ({
   // Initial state
   documents: [],
   selectedDocument: null,
   documentContent: null,
-  driveFiles: [],
   isLoading: false,
   isLoadingContent: false,
   syncStatus: 'idle',
@@ -179,8 +167,19 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
     try {
       set({ isLoadingContent: true, error: null });
 
+      // Get authentication tokens
       const authToken = await getAuthToken();
       const oauthToken = await getGoogleAccessToken();
+
+      // Validate that we have required tokens
+      if (!authToken) {
+        throw new Error('User authentication required. Please sign in.');
+      }
+
+      if (!oauthToken) {
+        throw new Error('Google Drive access not available. Please sign out and sign in again to connect your Google Drive.');
+      }
+
       const response = await fetch(`/api/drive/content/${fileId}`, {
         headers: {
           'Authorization': `Bearer ${authToken}`,
@@ -190,7 +189,14 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch document content: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+
+        // Handle specific error cases
+        if (response.status === 401) {
+          throw new Error('Google Drive access expired. Please sign out and sign in again to reconnect your Google Drive.');
+        }
+
+        throw new Error(errorData.error || `Failed to fetch document content: ${response.statusText}`);
       }
 
       const content = await response.json();
@@ -207,44 +213,6 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
         isLoadingContent: false,
       });
       throw error;
-    }
-  },
-
-  // Fetch available Google Drive files
-  fetchDriveFiles: async (folderId?: string, query?: string) => {
-    try {
-      set({ isLoading: true, error: null });
-
-      const authToken = await getAuthToken();
-      const oauthToken = await getGoogleAccessToken();
-      const searchParams = new URLSearchParams();
-
-      if (folderId) searchParams.set('folderId', folderId);
-      if (query) searchParams.set('query', query);
-
-      const response = await fetch(`/api/drive/files?${searchParams.toString()}`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Access-Token': oauthToken,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch Drive files: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      set({
-        driveFiles: data.files || [],
-        isLoading: false,
-      });
-    } catch (error) {
-      console.error('Error fetching Drive files:', error);
-      set({
-        error: error instanceof Error ? error.message : 'Failed to fetch Drive files',
-        isLoading: false,
-      });
     }
   },
 
@@ -306,7 +274,6 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
       documents: [],
       selectedDocument: null,
       documentContent: null,
-      driveFiles: [],
       isLoading: false,
       isLoadingContent: false,
       syncStatus: 'idle',

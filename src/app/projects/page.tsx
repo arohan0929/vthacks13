@@ -7,12 +7,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Folder, FileText, Calendar, TrendingUp } from 'lucide-react';
+import { Plus, Folder, FileText, Calendar, TrendingUp, LogOut } from 'lucide-react';
 import { ProjectSummary } from '@/lib/db/types';
 
 export default function ProjectsPage() {
   const router = useRouter();
-  const { user, loading } = useAuthStore();
+  const { user, loading, signOut } = useAuthStore();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +65,15 @@ export default function ProjectsPage() {
 
   const handleProjectClick = (projectId: string) => {
     router.push(`/projects/${projectId}`);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.push('/login');
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   const getStatusBadgeVariant = (status: string) => {
@@ -147,10 +156,20 @@ export default function ProjectsPage() {
             Manage your compliance assessment projects and track progress
           </p>
         </div>
-        <Button onClick={handleCreateProject} className="flex items-center gap-2">
-          <Plus size={20} />
-          New Project
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={handleSignOut}
+            className="flex items-center gap-2"
+          >
+            <LogOut size={18} />
+            Sign Out
+          </Button>
+          <Button onClick={handleCreateProject} className="flex items-center gap-2">
+            <Plus size={20} />
+            New Project
+          </Button>
+        </div>
       </div>
 
       {/* Projects Grid */}

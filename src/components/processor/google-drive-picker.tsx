@@ -1,340 +1,195 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Skeleton } from '@/components/ui/skeleton';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Search,
-  FileText,
-  Folder,
-  Image,
-  File,
-  ArrowLeft,
-  ExternalLink,
-  Plus,
-  AlertTriangle
-} from 'lucide-react';
-import { DriveFile } from '@/lib/db/types';
-import { useDocumentsStore } from '@/stores/documents-store';
+import { AlertTriangle, FileText } from 'lucide-react';
+import { getDriveAccessToken } from '@/lib/firebase/firebase';
 
 declare global {
   interface Window {
-    google: any;
-    gapi: any;
+    google: {
+      picker: {
+        Action: { PICKED: string };
+        Feature: { NAV_HIDDEN: string; MULTISELECT_ENABLED: string };
+        ViewId: {
+          DOCS: string;
+          SPREADSHEETS: string;
+          PRESENTATIONS: string;
+          PDFS: string;
+          FOLDERS: string;
+        };
+        PickerBuilder: new () => {
+          enableFeature: (feature: string) => GooglePickerBuilder;
+          setAppId: (appId: string) => GooglePickerBuilder;
+          setOAuthToken: (token: string) => GooglePickerBuilder;
+          addView: (viewId: string) => GooglePickerBuilder;
+          setCallback: (callback: (data: GooglePickerResult) => void) => GooglePickerBuilder;
+          setOrigin: (origin: string) => GooglePickerBuilder;
+          setSize: (width: number, height: number) => GooglePickerBuilder;
+          build: () => GooglePicker;
+        };
+      };
+    };
+    gapi: {
+      load: (apis: string, callback: () => void) => void;
+    };
   }
 }
 
+interface GooglePickerBuilder {
+  enableFeature: (feature: string) => GooglePickerBuilder;
+  setAppId: (appId: string) => GooglePickerBuilder;
+  setOAuthToken: (token: string) => GooglePickerBuilder;
+  addView: (viewId: string) => GooglePickerBuilder;
+  setCallback: (callback: (data: GooglePickerResult) => void) => GooglePickerBuilder;
+  setOrigin: (origin: string) => GooglePickerBuilder;
+  setSize: (width: number, height: number) => GooglePickerBuilder;
+  build: () => GooglePicker;
+}
+
+interface GooglePicker {
+  setVisible: (visible: boolean) => void;
+}
+
+interface GooglePickerResult {
+  action: string;
+  docs?: Array<{ id: string; name: string }>;
+}
+
+// Note: Google Picker can work with just OAuth tokens, no API key needed
+
 interface GoogleDrivePickerProps {
-  isOpen: boolean;
-  onClose: () => void;
   onSelectFile: (fileId: string) => Promise<void>;
   selectedFiles?: string[];
+  disabled?: boolean;
 }
 
 export function GoogleDrivePicker({
-  isOpen,
-  onClose,
   onSelectFile,
-  selectedFiles = []
+  selectedFiles = [],
+  disabled = false
 }: GoogleDrivePickerProps) {
-  const {
-    driveFiles,
-    isLoading,
-    error,
-    fetchDriveFiles,
-    clearError
-  } = useDocumentsStore();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isGapiLoaded, setIsGapiLoaded] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentFolderId, setCurrentFolderId] = useState<string | undefined>();
-  const [folderPath, setFolderPath] = useState<Array<{ id: string; name: string }>>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Load Google Drive files when dialog opens
+  // Load Google APIs on component mount
   useEffect(() => {
-    if (isOpen) {
-      fetchDriveFiles(currentFolderId);
-      clearError();
-    }
-  }, [isOpen, currentFolderId, fetchDriveFiles, clearError]);
+    const loadGoogleAPIs = () => {
+      // Load GAPI
+      if (!window.gapi) {
+        const gapiScript = document.createElement('script');
+        gapiScript.src = 'https://apis.google.com/js/api.js';
+        gapiScript.onload = () => {
+          window.gapi.load('auth2:picker', () => {
+            setIsGapiLoaded(true);
+          });
+        };
+        document.head.appendChild(gapiScript);
+      } else {
+        window.gapi.load('auth2:picker', () => {
+          setIsGapiLoaded(true);
+        });
+      }
+    };
 
-  // Handle search
-  const handleSearch = async () => {
-    if (searchQuery.trim()) {
-      await fetchDriveFiles(undefined, searchQuery.trim());
-    } else {
-      await fetchDriveFiles(currentFolderId);
+    loadGoogleAPIs();
+  }, []);
+
+  // Handle picker callback
+  const pickerCallback = async (data: GooglePickerResult) => {
+    if (data.action === window.google.picker.Action.PICKED && data.docs && data.docs.length > 0) {
+      const fileData = data.docs[0];
+      const fileId = fileData.id;
+
+      if (selectedFiles.includes(fileId)) {
+        setError('This file is already linked to the project');
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+        await onSelectFile(fileId);
+      } catch (error) {
+        console.error('Error selecting file:', error);
+        setError('Failed to link the selected file. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
-  // Handle folder navigation
-  const handleEnterFolder = async (folder: DriveFile) => {
-    const newFolderPath = [...folderPath, { id: folder.id, name: folder.name }];
-    setFolderPath(newFolderPath);
-    setCurrentFolderId(folder.id);
-    setSearchQuery(''); // Clear search when navigating
-  };
-
-  // Handle back navigation
-  const handleGoBack = async () => {
-    if (folderPath.length > 0) {
-      const newPath = folderPath.slice(0, -1);
-      setFolderPath(newPath);
-      setCurrentFolderId(newPath.length > 0 ? newPath[newPath.length - 1].id : undefined);
-    }
-  };
-
-  // Handle file selection
-  const handleSelectFile = async (file: DriveFile) => {
-    if (selectedFiles.includes(file.id)) {
-      return; // Already selected
+  // Create and show the picker
+  const showPicker = async () => {
+    if (!isGapiLoaded) {
+      setError('Google APIs are still loading. Please try again in a moment.');
+      return;
     }
 
     try {
-      setIsSubmitting(true);
-      await onSelectFile(file.id);
-      onClose();
+      setError(null);
+      setIsLoading(true);
+
+      // Get the OAuth access token
+      const accessToken = await getDriveAccessToken();
+      if (!accessToken) {
+        throw new Error('No Google Drive access token available. Please sign out and sign in again.');
+      }
+
+      // Create picker
+      const picker = new window.google.picker.PickerBuilder()
+        .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
+        .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
+        .setOAuthToken(accessToken)
+        .addView(window.google.picker.ViewId.DOCS)
+        .addView(window.google.picker.ViewId.SPREADSHEETS)
+        .addView(window.google.picker.ViewId.PRESENTATIONS)
+        .addView(window.google.picker.ViewId.PDFS)
+        .addView(window.google.picker.ViewId.FOLDERS)
+        .setCallback(pickerCallback)
+        .setOrigin(window.location.protocol + '//' + window.location.host)
+        .setSize(1051, 650)
+        .build();
+
+      picker.setVisible(true);
     } catch (error) {
-      console.error('Error selecting file:', error);
+      console.error('Error opening picker:', error);
+      setError(error instanceof Error ? error.message : 'Failed to open Google Drive picker');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
-
-  // Get file icon based on MIME type
-  const getFileIcon = (mimeType: string) => {
-    if (mimeType.includes('folder')) {
-      return <Folder size={20} className="text-blue-500" />;
-    }
-    if (mimeType.includes('document')) {
-      return <FileText size={20} className="text-blue-600" />;
-    }
-    if (mimeType.includes('spreadsheet')) {
-      return <FileText size={20} className="text-green-600" />;
-    }
-    if (mimeType.includes('presentation')) {
-      return <FileText size={20} className="text-orange-600" />;
-    }
-    if (mimeType.includes('image')) {
-      return <Image size={20} className="text-purple-600" />;
-    }
-    if (mimeType.includes('pdf')) {
-      return <File size={20} className="text-red-600" />;
-    }
-    return <File size={20} className="text-gray-600" />;
-  };
-
-  // Get file type display name
-  const getFileType = (mimeType: string) => {
-    if (mimeType.includes('folder')) return 'Folder';
-    if (mimeType.includes('document')) return 'Google Doc';
-    if (mimeType.includes('spreadsheet')) return 'Google Sheet';
-    if (mimeType.includes('presentation')) return 'Google Slides';
-    if (mimeType.includes('pdf')) return 'PDF';
-    if (mimeType.includes('image')) return 'Image';
-    return 'File';
-  };
-
-  // Format file size
-  const formatFileSize = (size?: string) => {
-    if (!size) return '';
-    const bytes = parseInt(size);
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  const filteredFiles = driveFiles.filter(file =>
-    searchQuery
-      ? file.name.toLowerCase().includes(searchQuery.toLowerCase())
-      : true
-  );
-
-  const folders = filteredFiles.filter(file => file.mimeType?.includes('folder'));
-  const files = filteredFiles.filter(file => !file.mimeType?.includes('folder'));
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Select Google Drive Files</DialogTitle>
-          <DialogDescription>
-            Choose files from your Google Drive to link to this project
-          </DialogDescription>
-        </DialogHeader>
+    <div className="space-y-2">
+      <Button
+        onClick={showPicker}
+        disabled={disabled || isLoading || !isGapiLoaded}
+        className="w-full"
+      >
+        <FileText className="mr-2 h-4 w-4" />
+        {isLoading
+          ? 'Opening Google Drive...'
+          : !isGapiLoaded
+          ? 'Loading Google APIs...'
+          : 'Select from Google Drive'
+        }
+      </Button>
 
-        <div className="flex-1 flex flex-col space-y-4">
-          {/* Navigation and Search */}
-          <div className="space-y-3">
-            {/* Breadcrumb */}
-            {folderPath.length > 0 && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleGoBack}
-                  className="h-7 px-2"
-                >
-                  <ArrowLeft size={14} />
-                </Button>
-                <span>My Drive</span>
-                {folderPath.map((folder, index) => (
-                  <span key={folder.id}>
-                    <span className="mx-1">/</span>
-                    <span>{folder.name}</span>
-                  </span>
-                ))}
-              </div>
-            )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTriangle size={16} />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-            {/* Search */}
-            <div className="flex gap-2">
-              <div className="flex-1 relative">
-                <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                <Input
-                  placeholder="Search files and folders"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  className="pl-9"
-                />
-              </div>
-              <Button onClick={handleSearch} disabled={isLoading}>
-                Search
-              </Button>
-            </div>
-          </div>
-
-          {/* Error Display */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertTriangle size={16} />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* File List */}
-          <ScrollArea className="flex-1">
-            {isLoading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 p-3 border rounded-lg">
-                    <Skeleton className="h-5 w-5" />
-                    <Skeleton className="h-4 flex-1" />
-                    <Skeleton className="h-4 w-16" />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {/* Folders */}
-                {folders.map((folder) => (
-                  <Card
-                    key={folder.id}
-                    className="cursor-pointer hover:bg-gray-50 transition-colors"
-                    onClick={() => handleEnterFolder(folder)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-center gap-3">
-                        {getFileIcon(folder.mimeType)}
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{folder.name}</div>
-                          <div className="text-sm text-gray-500">
-                            Modified {new Date(folder.modifiedTime).toLocaleDateString()}
-                          </div>
-                        </div>
-                        <Badge variant="outline">Folder</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-
-                {/* Files */}
-                {files.map((file) => {
-                  const isSelected = selectedFiles.includes(file.id);
-                  const isAlreadyLinked = isSelected;
-
-                  return (
-                    <Card
-                      key={file.id}
-                      className={`cursor-pointer transition-colors ${
-                        isAlreadyLinked
-                          ? 'bg-gray-100 border-gray-300'
-                          : 'hover:bg-gray-50'
-                      }`}
-                      onClick={() => !isAlreadyLinked && handleSelectFile(file)}
-                    >
-                      <CardContent className="p-3">
-                        <div className="flex items-center gap-3">
-                          {getFileIcon(file.mimeType)}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{file.name}</div>
-                            <div className="text-sm text-gray-500 flex items-center gap-2">
-                              <span>Modified {new Date(file.modifiedTime).toLocaleDateString()}</span>
-                              {file.size && <span>• {formatFileSize(file.size)}</span>}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline">
-                              {getFileType(file.mimeType)}
-                            </Badge>
-                            {isAlreadyLinked ? (
-                              <Badge variant="secondary">Already linked</Badge>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.open(file.webViewLink, '_blank');
-                                }}
-                              >
-                                <ExternalLink size={14} />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-
-                {filteredFiles.length === 0 && !isLoading && (
-                  <div className="text-center py-12 text-gray-500">
-                    <FileText size={48} className="mx-auto mb-4 text-gray-300" />
-                    <p>No files found</p>
-                    {searchQuery && (
-                      <p className="text-sm">Try adjusting your search terms</p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </ScrollArea>
-
-          {/* Footer */}
-          <div className="flex justify-between items-center pt-4 border-t">
-            <div className="text-sm text-gray-600">
-              {filteredFiles.length > 0 && (
-                <span>
-                  {filteredFiles.length} items • {selectedFiles.length} already linked
-                </span>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose} disabled={isSubmitting}>
-                Cancel
-              </Button>
-            </div>
-          </div>
+      {selectedFiles.length > 0 && (
+        <div className="text-sm text-gray-600">
+          {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} already linked
         </div>
-      </DialogContent>
-    </Dialog>
+      )}
+    </div>
   );
 }

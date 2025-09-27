@@ -29,9 +29,9 @@ export async function GET(
 
     // Extract Google OAuth access token from header
     const oauthToken = request.headers.get('x-google-access-token');
-    if (!oauthToken) {
+    if (!oauthToken || oauthToken === 'null' || oauthToken === 'undefined') {
       return NextResponse.json(
-        { error: 'Google OAuth access token required' },
+        { error: 'Google OAuth access token required. Please sign out and sign in again to reconnect your Google Drive.' },
         { status: 401 }
       );
     }
@@ -60,18 +60,27 @@ export async function GET(
   } catch (error) {
     console.error('Error in GET /api/drive/content/[fileId]:', error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
-    }
+    if (error instanceof Error) {
+      if (error.message.includes('token') || error.message.includes('unauthorized') || error.message.includes('invalid_token')) {
+        return NextResponse.json(
+          { error: 'Google Drive access expired. Please sign out and sign in again to reconnect your Google Drive.' },
+          { status: 401 }
+        );
+      }
 
-    if (error instanceof Error && error.message.includes('Failed to get')) {
-      return NextResponse.json(
-        { error: 'File not found or access denied' },
-        { status: 404 }
-      );
+      if (error.message.includes('access_token')) {
+        return NextResponse.json(
+          { error: 'Invalid Google Drive access token. Please sign out and sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes('Failed to get')) {
+        return NextResponse.json(
+          { error: 'File not found or access denied' },
+          { status: 404 }
+        );
+      }
     }
 
     return NextResponse.json(

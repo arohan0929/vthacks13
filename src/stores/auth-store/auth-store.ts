@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { User } from 'firebase/auth';
-import { auth, signInWithGoogle, logOut } from '@/lib/firebase/firebase';
+import { auth, signInWithGoogle, logOut, initializeTokens } from '@/lib/firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
 interface AuthState {
@@ -33,6 +33,9 @@ export const useAuthStore = create<AuthStore>((set) => ({
 
   // Initialize Firebase auth listener
   initializeAuth: () => {
+    // Initialize OAuth tokens from sessionStorage
+    initializeTokens();
+
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       set({
         user,

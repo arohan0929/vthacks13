@@ -9,22 +9,17 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   ArrowLeft,
   FileText,
   Shield,
-  Settings,
-  Plus,
-  Calendar,
   ExternalLink,
-  Download,
   RefreshCw,
   AlertTriangle
 } from 'lucide-react';
 import { GoogleDrivePicker } from '@/components/processor/google-drive-picker';
-import { Project, Document, ProjectSummary } from '@/lib/db/types';
+import { Project, Document } from '@/lib/db/types';
 
 interface ProjectData {
   project: Project;
@@ -106,13 +101,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  const [showDrivePicker, setShowDrivePicker] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-
-  const handleLinkDocument = () => {
-    setShowDrivePicker(true);
-  };
 
   const handleSelectDriveFile = async (fileId: string) => {
     try {
@@ -317,15 +307,11 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
             {isSyncing ? 'Syncing...' : 'Sync'}
           </Button>
-          <Button
-            onClick={handleLinkDocument}
-            variant="outline"
+          <GoogleDrivePicker
+            onSelectFile={handleSelectDriveFile}
+            selectedFiles={documents.map(doc => doc.drive_file_id)}
             disabled={isAnalyzing}
-            className="flex items-center gap-2"
-          >
-            <Plus size={16} />
-            Link Documents
-          </Button>
+          />
           <Button
             onClick={handleAnalyzeProject}
             disabled={isAnalyzing || documents.length === 0}
@@ -471,10 +457,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                     Google Drive files linked to this project
                   </CardDescription>
                 </div>
-                <Button onClick={handleLinkDocument} className="flex items-center gap-2">
-                  <Plus size={16} />
-                  Link Document
-                </Button>
+                <GoogleDrivePicker
+                  onSelectFile={handleSelectDriveFile}
+                  selectedFiles={documents.map(doc => doc.drive_file_id)}
+                />
               </div>
             </CardHeader>
             <CardContent>
@@ -487,10 +473,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
                   <p className="text-gray-600 mb-4">
                     Link Google Drive documents to analyze compliance requirements
                   </p>
-                  <Button onClick={handleLinkDocument} className="flex items-center gap-2">
-                    <Plus size={16} />
-                    Link Your First Document
-                  </Button>
+                  <GoogleDrivePicker
+                    onSelectFile={handleSelectDriveFile}
+                    selectedFiles={documents.map(doc => doc.drive_file_id)}
+                  />
                 </div>
               ) : (
                 <Table>
@@ -607,13 +593,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
         </TabsContent>
       </Tabs>
 
-      {/* Google Drive Picker */}
-      <GoogleDrivePicker
-        isOpen={showDrivePicker}
-        onClose={() => setShowDrivePicker(false)}
-        onSelectFile={handleSelectDriveFile}
-        selectedFiles={documents.map(doc => doc.drive_file_id)}
-      />
+      {/* Google Drive Picker - Now inline in the UI where needed */}
     </div>
   );
 }

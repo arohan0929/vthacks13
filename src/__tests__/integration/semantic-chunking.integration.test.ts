@@ -529,7 +529,7 @@ describe('Semantic Chunking Integration Tests', () => {
 
       // Generate mock embeddings
       const testEmbeddings = testChunks.map(() =>
-        Array.from({ length: 384 }, () => Math.random())
+        Array.from({ length: 768 }, () => Math.random())
       );
 
       // Store chunks in ChromaDB
@@ -541,7 +541,7 @@ describe('Semantic Chunking Integration Tests', () => {
       expect(collectionInfo?.name).toContain(projectId.replace(/-/g, '_'));
 
       // Test querying by similarity
-      const queryEmbedding = Array.from({ length: 384 }, () => Math.random());
+      const queryEmbedding = Array.from({ length: 768 }, () => Math.random());
       const queryResult = await chromaService.queryBySemanticSimilarity(
         projectId,
         queryEmbedding,

@@ -1,4 +1,6 @@
 import { getGeminiService } from '../ai/gemini-service';
+import { getGeminiEmbeddingService } from '../ai/gemini-embeddings';
+import { AI_CONFIG } from '../ai/config';
 import { HierarchyNode } from './structure-parser';
 
 export interface SemanticSegment {
@@ -30,6 +32,7 @@ export interface SemanticAnalysisResult {
 
 export class SemanticBoundaryDetector {
   private geminiService = getGeminiService();
+  private embeddingService = getGeminiEmbeddingService();
   private readonly SIMILARITY_THRESHOLD = 0.7;
   private readonly WINDOW_SIZE = 3; // sentences to consider for context
   private readonly MIN_SEGMENT_SIZE = 100; // minimum tokens per segment
@@ -109,17 +112,17 @@ export class SemanticBoundaryDetector {
   }
 
   /**
-   * Generate embeddings for a batch of text segments
+   * Generate embeddings for a batch of text segments using Gemini
    */
   private async generateBatchEmbeddings(segments: string[]): Promise<number[][]> {
     try {
-      // This is a placeholder - in a real implementation, you would use
-      // Gemini's embedding API or another embedding service
-      // For now, we'll create mock embeddings based on text similarity
-      return segments.map(segment => this.createMockEmbedding(segment));
+      // Use real Gemini embedding service
+      const embeddings = await this.embeddingService.generateDocumentEmbeddings(segments);
+      return embeddings;
     } catch (error) {
-      console.error('Error generating embeddings:', error);
-      // Return mock embeddings as fallback
+      console.error('Error generating embeddings with Gemini service:', error);
+      // Fall back to mock embeddings if Gemini API fails
+      console.warn('Falling back to mock embeddings for semantic analysis');
       return segments.map(segment => this.createMockEmbedding(segment));
     }
   }
@@ -130,7 +133,7 @@ export class SemanticBoundaryDetector {
    */
   private createMockEmbedding(text: string): number[] {
     const words = text.toLowerCase().split(/\s+/);
-    const embedding = new Array(384).fill(0); // Standard embedding dimension
+    const embedding = new Array(AI_CONFIG.embeddings.dimensions).fill(0); // Use configured embedding dimension
 
     // Create a simple hash-based embedding for testing
     for (let i = 0; i < words.length; i++) {
@@ -441,13 +444,20 @@ export class SemanticBoundaryDetector {
    * Analyze semantic similarity between two text chunks
    */
   public async analyzeSimilarity(text1: string, text2: string): Promise<number> {
-    const embedding1 = await this.generateBatchEmbeddings([text1]);
-    const embedding2 = await this.generateBatchEmbeddings([text2]);
+    try {
+      const embeddings = await this.embeddingService.generateDocumentEmbeddings([text1, text2]);
 
-    if (embedding1.length > 0 && embedding2.length > 0) {
-      return this.cosineSimilarity(embedding1[0], embedding2[0]);
+      if (embeddings.length >= 2) {
+        return this.cosineSimilarity(embeddings[0], embeddings[1]);
+      }
+
+      return 0;
+    } catch (error) {
+      console.error('Error analyzing similarity:', error);
+      // Fall back to mock similarity calculation
+      const embedding1 = this.createMockEmbedding(text1);
+      const embedding2 = this.createMockEmbedding(text2);
+      return this.cosineSimilarity(embedding1, embedding2);
     }
-
-    return 0;
   }
 }

@@ -46,6 +46,14 @@ export interface DocumentChunk {
   };
 }
 
+export interface HierarchyTreeNode {
+  node: HierarchyNode;
+  children: HierarchyTreeNode[];
+  parent?: HierarchyTreeNode;
+  tokens: number;
+  depth: number;
+}
+
 export interface ChunkingResult {
   chunks: DocumentChunk[];
   total_chunks: number;
@@ -63,7 +71,7 @@ export class SemanticChunker {
   private chunkCounter = 0;
 
   private readonly defaultConfig: ChunkingConfig = {
-    min_chunk_size: 200,
+    min_chunk_size: 300,
     max_chunk_size: 500,
     target_chunk_size: 400,
     overlap_percentage: 10,
@@ -71,6 +79,460 @@ export class SemanticChunker {
     respect_section_boundaries: true,
     include_heading_context: true
   };
+
+  /**
+   * Get adaptive chunk configuration based on document size
+   */
+  private getAdaptiveChunkConfig(totalTokens: number): Partial<ChunkingConfig> {
+    if (totalTokens < 1000) {
+      return {
+        min_chunk_size: 100,
+        target_chunk_size: 150,
+        max_chunk_size: 300
+      };
+    } else if (totalTokens < 3000) {
+      return {
+        min_chunk_size: 200,
+        target_chunk_size: 300,
+        max_chunk_size: 400
+      };
+    } else if (totalTokens < 10000) {
+      return {
+        min_chunk_size: 300,
+        target_chunk_size: 400,
+        max_chunk_size: 500
+      };
+    } else {
+      return {
+        min_chunk_size: 400,
+        target_chunk_size: 450,
+        max_chunk_size: 500
+      };
+    }
+  }
+
+  /**
+   * Build hierarchy tree from flat node structure
+   */
+  private buildHierarchyTree(structure: DocumentStructure): HierarchyTreeNode[] {
+    const nodeMap = new Map<string, HierarchyTreeNode>();
+    const rootNodes: HierarchyTreeNode[] = [];
+
+    // Create tree nodes from flat structure
+    for (const node of structure.nodes) {
+      const treeNode: HierarchyTreeNode = {
+        node,
+        children: [],
+        tokens: this.countTokens(node.content),
+        depth: node.level || 0
+      };
+      nodeMap.set(node.id, treeNode);
+    }
+
+    // Build parent-child relationships
+    for (const node of structure.nodes) {
+      const treeNode = nodeMap.get(node.id)!;
+
+      if (node.parent_id) {
+        const parent = nodeMap.get(node.parent_id);
+        if (parent) {
+          parent.children.push(treeNode);
+          treeNode.parent = parent;
+        } else {
+          // Orphaned node, add to root
+          rootNodes.push(treeNode);
+        }
+      } else {
+        rootNodes.push(treeNode);
+      }
+    }
+
+    // Fix malformed hierarchies (e.g., H3 directly under H1)
+    this.fixHierarchyLevels(rootNodes);
+
+    return rootNodes;
+  }
+
+  /**
+   * Fix malformed heading hierarchies
+   */
+  private fixHierarchyLevels(nodes: HierarchyTreeNode[]): void {
+    const fixLevels = (node: HierarchyTreeNode, expectedLevel: number = 1) => {
+      if (node.node.type === 'heading') {
+        // Ensure heading level makes sense in context
+        const actualLevel = node.node.level;
+        const parentLevel = node.parent?.node.type === 'heading' ? node.parent.node.level : 0;
+
+        // If there's a gap (e.g., H3 under H1), adjust logically
+        if (actualLevel > parentLevel + 1) {
+          node.depth = parentLevel + 1;
+        } else {
+          node.depth = actualLevel;
+        }
+      }
+
+      // Recursively fix children
+      for (const child of node.children) {
+        fixLevels(child, node.depth + 1);
+      }
+    };
+
+    for (const root of nodes) {
+      fixLevels(root);
+    }
+  }
+
+  /**
+   * Bottom-up chunking with semantic boundaries
+   */
+  private async chunkHierarchyBottomUp(
+    treeNodes: HierarchyTreeNode[],
+    structure: DocumentStructure,
+    semanticAnalysis: SemanticAnalysisResult,
+    documentId: string,
+    sourceFileId: string,
+    sourceFileName: string,
+    config: ChunkingConfig
+  ): Promise<DocumentChunk[]> {
+    const chunks: DocumentChunk[] = [];
+
+    for (const treeNode of treeNodes) {
+      const nodeChunks = await this.processTreeNode(
+        treeNode,
+        structure,
+        semanticAnalysis,
+        documentId,
+        sourceFileId,
+        sourceFileName,
+        config
+      );
+      chunks.push(...nodeChunks);
+    }
+
+    return chunks;
+  }
+
+  /**
+   * Process a single tree node bottom-up
+   */
+  private async processTreeNode(
+    treeNode: HierarchyTreeNode,
+    structure: DocumentStructure,
+    semanticAnalysis: SemanticAnalysisResult,
+    documentId: string,
+    sourceFileId: string,
+    sourceFileName: string,
+    config: ChunkingConfig
+  ): Promise<DocumentChunk[]> {
+    // If this is a leaf node (no children), return as single chunk
+    if (treeNode.children.length === 0) {
+      const flatNodes = this.flattenTreeNode(treeNode);
+      return [this.createChunkFromNodes(
+        flatNodes,
+        structure,
+        documentId,
+        sourceFileId,
+        sourceFileName,
+        'hybrid'
+      )];
+    }
+
+    // For nodes with children, always try to split by child boundaries first
+    const childChunks: DocumentChunk[] = [];
+
+    // Process each child as a potential separate chunk
+    for (const child of treeNode.children) {
+      const childTokens = this.calculateTreeNodeTokens(child);
+
+      if (childTokens >= config.min_chunk_size || child.node.type === 'heading') {
+        // Child is large enough or is a heading, process it separately
+        const chunks = await this.processTreeNode(
+          child,
+          structure,
+          semanticAnalysis,
+          documentId,
+          sourceFileId,
+          sourceFileName,
+          config
+        );
+        childChunks.push(...chunks);
+      } else {
+        // Child is too small, will be grouped later
+        const flatNodes = this.flattenTreeNode(child);
+        const chunk = this.createChunkFromNodes(
+          flatNodes,
+          structure,
+          documentId,
+          sourceFileId,
+          sourceFileName,
+          'hybrid'
+        );
+        childChunks.push(chunk);
+      }
+    }
+
+    // Group small adjacent chunks if they can be combined
+    const groupedChunks = this.groupSimilarChunks(childChunks, semanticAnalysis, config);
+
+    // If this node has its own content (heading), decide where to place it
+    if (treeNode.node.content.trim() && treeNode.node.type === 'heading') {
+      const nodeContent = [treeNode.node];
+      const nodeTokens = this.countTokens(treeNode.node.content);
+
+      // For small headings, try to combine with first child
+      if (nodeTokens < config.min_chunk_size && groupedChunks.length > 0) {
+        const firstChunk = groupedChunks[0];
+        if (firstChunk.tokens + nodeTokens <= config.max_chunk_size) {
+          // Combine heading with first child chunk
+          const combinedNodes = [...nodeContent, ...this.getNodesFromChunk(firstChunk, structure)];
+          groupedChunks[0] = this.createChunkFromNodes(
+            combinedNodes,
+            structure,
+            documentId,
+            sourceFileId,
+            sourceFileName,
+            'hybrid'
+          );
+        } else {
+          // Create separate chunk for heading
+          const nodeChunk = this.createChunkFromNodes(
+            nodeContent,
+            structure,
+            documentId,
+            sourceFileId,
+            sourceFileName,
+            'hybrid'
+          );
+          groupedChunks.unshift(nodeChunk);
+        }
+      } else {
+        // Heading is large enough or no children, create separate chunk
+        const nodeChunk = this.createChunkFromNodes(
+          nodeContent,
+          structure,
+          documentId,
+          sourceFileId,
+          sourceFileName,
+          'hybrid'
+        );
+        groupedChunks.unshift(nodeChunk);
+      }
+    }
+
+    return groupedChunks;
+  }
+
+  /**
+   * Calculate total tokens for a tree node including all descendants
+   */
+  private calculateTreeNodeTokens(treeNode: HierarchyTreeNode): number {
+    let total = this.countTokens(treeNode.node.content);
+    for (const child of treeNode.children) {
+      total += this.calculateTreeNodeTokens(child);
+    }
+    return total;
+  }
+
+  /**
+   * Group similar chunks based on semantic similarity and size constraints
+   */
+  private groupSimilarChunks(
+    chunks: DocumentChunk[],
+    semanticAnalysis: SemanticAnalysisResult,
+    config: ChunkingConfig
+  ): DocumentChunk[] {
+    if (chunks.length <= 1) return chunks;
+
+    const grouped: DocumentChunk[] = [];
+    let currentGroup: DocumentChunk[] = [chunks[0]];
+    let currentTokens = chunks[0].tokens;
+
+    for (let i = 1; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const lastChunk = currentGroup[currentGroup.length - 1];
+
+      const canCombineSize = currentTokens + chunk.tokens <= config.max_chunk_size;
+      const shouldCombineSmall = currentTokens < config.min_chunk_size || chunk.tokens < config.min_chunk_size;
+      const isCodeBlock = chunk.chunk_type === 'code' && lastChunk.chunk_type === 'code';
+      const isRelatedContent = this.areChunksRelated(lastChunk, chunk);
+      const hasStrongSemanticBoundary = this.hasStrongSemanticBoundary(lastChunk, chunk, semanticAnalysis);
+
+      // More aggressive combining logic
+      const shouldCombine = canCombineSize && (
+        shouldCombineSmall ||  // Combine if either chunk is too small
+        isCodeBlock ||         // Keep code blocks together
+        isRelatedContent       // Related content (headings with content)
+      ) && !hasStrongSemanticBoundary;
+
+      if (shouldCombine) {
+        currentGroup.push(chunk);
+        currentTokens += chunk.tokens;
+      } else {
+        // Finalize current group
+        if (currentGroup.length === 1) {
+          grouped.push(currentGroup[0]);
+        } else {
+          // Merge chunks in current group
+          const mergedChunk = this.mergeChunks(currentGroup);
+          grouped.push(mergedChunk);
+        }
+
+        // Start new group
+        currentGroup = [chunk];
+        currentTokens = chunk.tokens;
+      }
+    }
+
+    // Handle final group
+    if (currentGroup.length === 1) {
+      grouped.push(currentGroup[0]);
+    } else {
+      const mergedChunk = this.mergeChunks(currentGroup);
+      grouped.push(mergedChunk);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * Check if chunks are related (heading with content, code blocks, etc.)
+   */
+  private areChunksRelated(chunk1: DocumentChunk, chunk2: DocumentChunk): boolean {
+    // Heading followed by content
+    if (chunk1.chunk_type === 'heading' && chunk2.chunk_type !== 'heading') {
+      return true;
+    }
+
+    // Code blocks should stay together
+    if (chunk1.chunk_type === 'code' || chunk2.chunk_type === 'code') {
+      return true;
+    }
+
+    // List items with their explanatory text
+    if (chunk1.chunk_type === 'paragraph' && chunk2.chunk_type === 'list') {
+      return true;
+    }
+
+    // Same hierarchy level content
+    if (chunk1.hierarchy_level === chunk2.hierarchy_level &&
+        chunk1.hierarchy_level > 0) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check for strong semantic boundaries that should not be crossed
+   */
+  private hasStrongSemanticBoundary(
+    chunk1: DocumentChunk,
+    chunk2: DocumentChunk,
+    semanticAnalysis: SemanticAnalysisResult
+  ): boolean {
+    // Different major heading sections (H1, H2)
+    if (chunk1.hierarchy_level <= 2 && chunk2.hierarchy_level <= 2 &&
+        chunk1.chunk_type === 'heading' && chunk2.chunk_type === 'heading') {
+      return true;
+    }
+
+    // Check semantic analysis boundaries
+    const boundary = semanticAnalysis.boundaries.find(b =>
+      Math.abs(b.position - chunk1.position) <= 1 ||
+      Math.abs(b.position - chunk2.position) <= 1
+    );
+
+    return boundary && boundary.boundary_strength > 0.8;
+  }
+
+  /**
+   * Check if two chunks can be semantically grouped
+   */
+  private areChunksSemanticallyGroupable(
+    chunk1: DocumentChunk,
+    chunk2: DocumentChunk,
+    semanticAnalysis: SemanticAnalysisResult
+  ): boolean {
+    // Check for semantic boundary between chunks
+    const boundary = semanticAnalysis.boundaries.find(b =>
+      Math.abs(b.position - chunk1.position) <= 2 ||
+      Math.abs(b.position - chunk2.position) <= 2
+    );
+
+    if (boundary && boundary.boundary_strength > 0.7) {
+      return false; // Strong semantic boundary, don't group
+    }
+
+    // Check topic keyword overlap
+    const keywords1 = new Set(chunk1.topic_keywords);
+    const keywords2 = new Set(chunk2.topic_keywords);
+    const intersection = new Set([...keywords1].filter(x => keywords2.has(x)));
+    const union = new Set([...keywords1, ...keywords2]);
+
+    const similarity = intersection.size / Math.max(union.size, 1);
+    return similarity > 0.3; // 30% keyword overlap threshold
+  }
+
+  /**
+   * Flatten tree node into list of hierarchy nodes
+   */
+  private flattenTreeNode(treeNode: HierarchyTreeNode): HierarchyNode[] {
+    const nodes: HierarchyNode[] = [treeNode.node];
+
+    for (const child of treeNode.children) {
+      nodes.push(...this.flattenTreeNode(child));
+    }
+
+    return nodes;
+  }
+
+  /**
+   * Check if content can be combined with first chunk
+   */
+  private canCombineWithFirstChunk(
+    nodes: HierarchyNode[],
+    chunk: DocumentChunk,
+    config: ChunkingConfig
+  ): boolean {
+    const nodeTokens = this.calculateNodesTokens(nodes);
+    return nodeTokens + chunk.tokens <= config.max_chunk_size;
+  }
+
+  /**
+   * Extract hierarchy nodes from a chunk (placeholder implementation)
+   */
+  private getNodesFromChunk(chunk: DocumentChunk, structure: DocumentStructure): HierarchyNode[] {
+    // This is a simplified approach - in practice, you'd maintain node references in chunks
+    // For now, we'll parse the content back to nodes
+    return structure.nodes.filter(node =>
+      chunk.content.includes(node.content.substring(0, 50))
+    );
+  }
+
+  /**
+   * Merge multiple chunks into one
+   */
+  private mergeChunks(chunks: DocumentChunk[]): DocumentChunk {
+    if (chunks.length === 1) return chunks[0];
+
+    const mergedContent = chunks.map(chunk => chunk.content).join('\n\n');
+    const mergedTokens = chunks.reduce((sum, chunk) => sum + chunk.tokens, 0);
+    const mergedKeywords = Array.from(new Set(
+      chunks.flatMap(chunk => chunk.topic_keywords)
+    ));
+
+    // Use first chunk as template
+    const firstChunk = chunks[0];
+
+    return {
+      ...firstChunk,
+      content: mergedContent,
+      tokens: mergedTokens,
+      topic_keywords: mergedKeywords,
+      semantic_density: chunks.reduce((sum, chunk) => sum + chunk.semantic_density, 0) / chunks.length,
+      chunk_type: 'mixed'
+    };
+  }
 
   /**
    * Main chunking method that combines structural and semantic analysis
@@ -127,71 +589,95 @@ export class SemanticChunker {
     sourceFileName: string,
     config: ChunkingConfig
   ): Promise<DocumentChunk[]> {
-    const chunks: DocumentChunk[] = [];
-    const processedNodes = new Set<string>();
+    // Calculate total document tokens for adaptive sizing
+    const totalTokens = structure.nodes.reduce((sum, node) =>
+      sum + this.countTokens(node.content), 0
+    );
 
-    // Phase 1: Handle major sections (H1, H2) as chunk boundaries
-    if (config.respect_section_boundaries) {
-      const majorSections = this.identifyMajorSections(structure);
+    // Get adaptive chunk configuration based on document size
+    const adaptiveConfig = this.getAdaptiveChunkConfig(totalTokens);
+    const finalConfig = { ...config, ...adaptiveConfig };
 
-      for (const section of majorSections) {
-        const sectionChunks = await this.chunkSection(
-          section,
-          structure,
-          semanticAnalysis,
-          documentId,
-          sourceFileId,
-          sourceFileName,
-          config
-        );
-        chunks.push(...sectionChunks);
+    // Build hierarchy tree from flat structure
+    const hierarchyTree = this.buildHierarchyTree(structure);
 
-        // Mark nodes as processed
-        this.markNodesAsProcessed(section.nodes, processedNodes);
-      }
-    }
+    // Apply bottom-up chunking with semantic boundaries
+    const chunks = await this.chunkHierarchyBottomUp(
+      hierarchyTree,
+      structure,
+      semanticAnalysis,
+      documentId,
+      sourceFileId,
+      sourceFileName,
+      finalConfig
+    );
 
-    // Phase 2: Handle remaining unprocessed nodes
-    const remainingNodes = structure.nodes.filter(node => !processedNodes.has(node.id));
-    if (remainingNodes.length > 0) {
-      const remainingChunks = await this.chunkNodeSequence(
-        remainingNodes,
-        structure,
-        semanticAnalysis,
-        documentId,
-        sourceFileId,
-        sourceFileName,
-        config
-      );
-      chunks.push(...remainingChunks);
-    }
+    // Add overlaps between chunks
+    this.addChunkOverlaps(chunks, finalConfig);
 
     return chunks;
   }
 
   /**
-   * Identify major sections that should serve as natural chunk boundaries
+   * Identify non-overlapping sections that serve as natural chunk boundaries
    */
   private identifyMajorSections(structure: DocumentStructure): Array<{
     heading: HierarchyNode;
     nodes: HierarchyNode[];
   }> {
     const sections: Array<{ heading: HierarchyNode; nodes: HierarchyNode[] }> = [];
+    const processedNodes = new Set<string>();
 
-    // Find H1 and H2 headings as major section boundaries
-    const majorHeadings = structure.nodes.filter(
-      node => node.type === 'heading' && node.level <= 2
-    );
+    // Sort nodes by position to process in document order
+    const sortedNodes = [...structure.nodes].sort((a, b) => a.position - b.position);
 
-    for (const heading of majorHeadings) {
-      const sectionNodes = this.structureParser.getNodesUnderHeading(structure, heading.id);
-      sections.push({
-        heading,
-        nodes: [heading, ...sectionNodes]
-      });
+    for (const node of sortedNodes) {
+      // Skip if already processed
+      if (processedNodes.has(node.id)) continue;
+
+      // Only process headings as section boundaries
+      if (node.type === 'heading' && node.level <= 2) {
+        const sectionNodes = this.collectSectionContent(node, sortedNodes, processedNodes);
+
+        sections.push({
+          heading: node,
+          nodes: sectionNodes
+        });
+
+        // Mark all nodes in this section as processed
+        sectionNodes.forEach(n => processedNodes.add(n.id));
+      }
     }
 
     return sections;
+  }
+
+  /**
+   * Collect content for a section until the next heading of same or higher level
+   */
+  private collectSectionContent(
+    heading: HierarchyNode,
+    allNodes: HierarchyNode[],
+    processedNodes: Set<string>
+  ): HierarchyNode[] {
+    const sectionNodes: HierarchyNode[] = [heading];
+    const headingPosition = heading.position;
+    const headingLevel = heading.level;
+
+    // Find content until next heading of same or higher level
+    for (let i = headingPosition + 1; i < allNodes.length; i++) {
+      const node = allNodes.find(n => n.position === i);
+      if (!node || processedNodes.has(node.id)) continue;
+
+      // Stop if we hit another heading of same or higher level
+      if (node.type === 'heading' && node.level <= headingLevel) {
+        break;
+      }
+
+      sectionNodes.push(node);
+    }
+
+    return sectionNodes;
   }
 
   /**
@@ -318,6 +804,90 @@ export class SemanticChunker {
     }
 
     return splitPoints;
+  }
+
+  /**
+   * Find optimal break point for chunking when approaching target size
+   */
+  private findOptimalBreakPoint(
+    sortedNodes: HierarchyNode[],
+    currentPosition: number,
+    semanticAnalysis: SemanticAnalysisResult,
+    config: ChunkingConfig
+  ): number {
+    const lookAheadLimit = Math.min(currentPosition + 5, sortedNodes.length - 1);
+    let bestBreakPoint = currentPosition;
+    let bestScore = 0;
+
+    // Look ahead for good break points
+    for (let i = currentPosition; i <= lookAheadLimit; i++) {
+      const node = sortedNodes[i];
+      let score = 0;
+
+      // Prefer breaking after headings (natural section boundaries)
+      if (node.type === 'heading') {
+        score += 3;
+      }
+
+      // Prefer breaking after paragraphs (complete thoughts)
+      if (node.type === 'paragraph') {
+        score += 2;
+      }
+
+      // Check for semantic boundaries
+      const semanticBoundary = semanticAnalysis.boundaries.find(
+        boundary => boundary.position === i
+      );
+      if (semanticBoundary) {
+        score += semanticBoundary.boundary_strength * 2;
+      }
+
+      // Penalize breaking in the middle of lists or tables
+      if (node.type === 'list' || node.type === 'table') {
+        score -= 1;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestBreakPoint = i;
+      }
+    }
+
+    return bestBreakPoint;
+  }
+
+  /**
+   * Calculate overlap nodes between chunks (10% overlap)
+   */
+  private calculateOverlapNodes(
+    chunkNodes: HierarchyNode[],
+    config: ChunkingConfig
+  ): HierarchyNode[] {
+    if (config.overlap_percentage <= 0 || chunkNodes.length === 0) {
+      return [];
+    }
+
+    const totalTokens = this.calculateNodesTokens(chunkNodes);
+    const targetOverlapTokens = Math.floor(totalTokens * (config.overlap_percentage / 100));
+
+    // Take nodes from the end of the chunk for overlap
+    const overlapNodes: HierarchyNode[] = [];
+    let overlapTokens = 0;
+
+    for (let i = chunkNodes.length - 1; i >= 0 && overlapTokens < targetOverlapTokens; i--) {
+      const node = chunkNodes[i];
+      const nodeTokens = this.countTokens(node.content);
+
+      // Add node if it doesn't exceed target overlap
+      if (overlapTokens + nodeTokens <= targetOverlapTokens * 1.5) { // Allow 50% tolerance
+        overlapNodes.unshift(node);
+        overlapTokens += nodeTokens;
+      } else {
+        break;
+      }
+    }
+
+    return overlapNodes;
   }
 
   /**

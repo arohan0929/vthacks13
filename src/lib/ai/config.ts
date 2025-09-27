@@ -5,6 +5,14 @@ export const AI_CONFIG = {
     maxTokens: 8192,
     maxRetries: 3,
   },
+  embeddings: {
+    model: 'text-embedding-004',
+    dimensions: 768, // Default dimension for text-embedding-004
+    maxBatchSize: 100,
+    rateLimitPerMinute: 60,
+    maxRetries: 3,
+    retryDelayMs: 1000,
+  },
   processing: {
     maxDocumentSize: 10 * 1024 * 1024, // 10MB
     chunkSize: 4000,

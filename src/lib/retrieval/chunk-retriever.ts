@@ -1,5 +1,7 @@
 import { getChromaService, QueryOptions, QueryResult } from '../vector/chroma-service';
+import { getGeminiEmbeddingService } from '../ai/gemini-embeddings';
 import { SemanticBoundaryDetector } from '../processing/semantic-analyzer';
+import { AI_CONFIG } from '../ai/config';
 import { sql } from '../db/neon-client';
 import { DocumentChunk } from '../processing/semantic-chunker';
 
@@ -40,6 +42,7 @@ export type RetrievalStrategy = 'semantic' | 'hierarchical' | 'hybrid' | 'contex
 
 export class ChunkRetriever {
   private chromaService = getChromaService();
+  private embeddingService = getGeminiEmbeddingService();
   private semanticDetector = new SemanticBoundaryDetector();
 
   /**
@@ -442,13 +445,22 @@ export class ChunkRetriever {
   // Helper methods
 
   private async generateQueryEmbedding(query: string): Promise<number[]> {
-    // This is a placeholder - in production, use actual Gemini embeddings
-    const embedding = new Array(384).fill(0);
-    for (let i = 0; i < query.length; i++) {
-      const index = query.charCodeAt(i) % embedding.length;
-      embedding[index] += 1 / query.length;
+    try {
+      // Use real Gemini embedding service for query embeddings
+      const embedding = await this.embeddingService.generateQueryEmbedding(query);
+      return embedding;
+    } catch (error) {
+      console.error('Failed to generate query embedding with Gemini service:', error);
+      console.warn('Falling back to mock embedding for query');
+
+      // Fallback to simple hash-based embedding
+      const embedding = new Array(AI_CONFIG.embeddings.dimensions).fill(0);
+      for (let i = 0; i < query.length; i++) {
+        const index = query.charCodeAt(i) % embedding.length;
+        embedding[index] += 1 / query.length;
+      }
+      return embedding;
     }
-    return embedding;
   }
 
   private filterBySimilarity(queryResult: QueryResult, threshold: number): QueryResult {

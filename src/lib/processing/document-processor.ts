@@ -1,8 +1,10 @@
 import { getDriveService } from '../google-drive/drive-service';
 import { DocumentsService } from '../db/documents-service';
 import { getGeminiService } from '../ai/gemini-service';
+import { getGeminiEmbeddingService } from '../ai/gemini-embeddings';
 import { getChromaService } from '../vector/chroma-service';
 import { SemanticChunker, ChunkingConfig, DocumentChunk } from './semantic-chunker';
+import { AI_CONFIG } from '../ai/config';
 import { sql } from '../db/neon-client';
 
 export interface ProcessingOptions {
@@ -57,6 +59,7 @@ export interface ProcessingResult {
 export class DocumentProcessor {
   private documentsService = new DocumentsService();
   private geminiService = getGeminiService();
+  private embeddingService = getGeminiEmbeddingService();
   private chromaService = getChromaService();
   private semanticChunker = new SemanticChunker();
   private activeJobs = new Map<string, ProcessingStatus>();
@@ -232,49 +235,36 @@ export class DocumentProcessor {
   }
 
   /**
-   * Generate embeddings for chunks
+   * Generate embeddings for chunks using Gemini
    */
   private async generateEmbeddings(chunks: DocumentChunk[]): Promise<number[][]> {
-    const embeddings: number[][] = [];
-
-    // Process in batches to avoid memory issues
-    const batchSize = 10;
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
-      const batchTexts = batch.map(chunk => chunk.content);
-
-      try {
-        // Use Gemini's embedding service
-        // Note: This is a placeholder - you would implement actual Gemini embedding calls
-        const batchEmbeddings = await this.generateBatchEmbeddings(batchTexts);
-        embeddings.push(...batchEmbeddings);
-      } catch (error) {
-        console.error('Failed to generate embeddings for batch:', error);
-        // Add zero embeddings as fallback
-        const fallbackEmbeddings = batch.map(() => new Array(384).fill(0));
-        embeddings.push(...fallbackEmbeddings);
-      }
+    if (chunks.length === 0) {
+      return [];
     }
 
-    return embeddings;
+    try {
+      // Extract text content from chunks
+      const texts = chunks.map(chunk => chunk.content);
+
+      // Use Gemini embedding service with batching and rate limiting
+      const result = await this.embeddingService.generateEmbeddings(texts, {
+        taskType: 'document'
+      });
+
+      console.log(`Generated ${result.embeddings.length} embeddings using ${result.requestCount} API requests`);
+      console.log(`Token usage: ${result.tokensUsed} tokens`);
+
+      return result.embeddings;
+    } catch (error) {
+      console.error('Failed to generate embeddings with Gemini service:', error);
+      console.warn('Falling back to zero embeddings for all chunks');
+
+      // Return zero embeddings as fallback
+      const fallbackEmbeddings = chunks.map(() => new Array(AI_CONFIG.embeddings.dimensions).fill(0));
+      return fallbackEmbeddings;
+    }
   }
 
-  /**
-   * Generate embeddings for a batch of texts (placeholder implementation)
-   */
-  private async generateBatchEmbeddings(texts: string[]): Promise<number[][]> {
-    // This is a placeholder implementation
-    // In production, you would use Gemini's actual embedding API
-    return texts.map(text => {
-      const embedding = new Array(384).fill(0);
-      // Simple hash-based embedding for testing
-      for (let i = 0; i < text.length; i++) {
-        const index = text.charCodeAt(i) % embedding.length;
-        embedding[index] += 1 / text.length;
-      }
-      return embedding;
-    });
-  }
 
   /**
    * Store chunks in the database

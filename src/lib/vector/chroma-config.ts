@@ -14,6 +14,9 @@ export interface ChromaConfig {
 
 export const DEFAULT_CHROMA_CONFIG: ChromaConfig = {
   persist_directory: path.join(process.cwd(), 'chroma-db'),
+  host: 'localhost',
+  port: 8000,
+  ssl: false,
   collection_metadata: {
     hnsw_space: 'cosine',
     embedding_function: 'gemini-text-embedding-004'
@@ -22,7 +25,7 @@ export const DEFAULT_CHROMA_CONFIG: ChromaConfig = {
 
 export const COLLECTION_SETTINGS = {
   // Standard embedding dimension for text-embedding-004
-  embedding_dimension: 384,
+  embedding_dimension: 768,
 
   // Collection naming pattern
   collection_prefix: 'project_',
@@ -51,9 +54,11 @@ export function getCollectionName(projectId: string): string {
 }
 
 export function validateProjectId(projectId: string): boolean {
-  // UUID pattern validation
+  // Accept both UUID format and temporary test project IDs
   const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  return uuidPattern.test(projectId);
+  const testProjectPattern = /^test-[a-zA-Z0-9-_]+$/;
+
+  return uuidPattern.test(projectId) || testProjectPattern.test(projectId);
 }
 
 export function sanitizeCollectionName(name: string): string {

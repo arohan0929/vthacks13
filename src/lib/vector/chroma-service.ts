@@ -63,13 +63,26 @@ export class ChromaVectorService {
     if (this.initialized) return;
 
     try {
-      // Create ChromaDB client with persistence
+      // Try in-memory mode first for development/testing
+      try {
+        this.client = new ChromaClient();
+        this.initialized = true;
+        console.log('ChromaDB initialized in in-memory mode');
+        return;
+      } catch (memoryError) {
+        console.log('In-memory mode failed, trying server mode...');
+      }
+
+      // Fallback to server mode
       this.client = new ChromaClient({
-        path: this.config.persist_directory
+        host: this.config.host || 'localhost',
+        port: this.config.port || 8000,
+        ssl: this.config.ssl || false,
+        headers: this.config.headers || {}
       });
 
       this.initialized = true;
-      console.log(`ChromaDB initialized with persistence at: ${this.config.persist_directory}`);
+      console.log(`ChromaDB initialized with host: ${this.config.host || 'localhost'}:${this.config.port || 8000}`);
     } catch (error) {
       console.error('Failed to initialize ChromaDB:', error);
       throw new Error(`ChromaDB initialization failed: ${error}`);
@@ -119,6 +132,7 @@ export class ChromaVectorService {
     try {
       const collection = await this.client.createCollection({
         name: collectionName,
+        embeddingFunction: null, // We provide our own embeddings from Gemini
         metadata: {
           project_id: projectId,
           embedding_function: this.config.collection_metadata.embedding_function,

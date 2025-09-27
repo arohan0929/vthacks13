@@ -1,0 +1,317 @@
+import { create } from 'zustand';
+import { Document, DriveFile, DriveFileContent } from '@/lib/db/types';
+import { SyncStatus } from '@/components/processor/sync-status';
+
+interface DocumentsState {
+  // State
+  documents: Document[];
+  selectedDocument: Document | null;
+  documentContent: DriveFileContent | null;
+  driveFiles: DriveFile[];
+  isLoading: boolean;
+  isLoadingContent: boolean;
+  syncStatus: SyncStatus;
+  error: string | null;
+  lastSyncTime: Date | null;
+
+  // Actions
+  fetchDocuments: (projectId: string) => Promise<void>;
+  linkDriveFile: (projectId: string, driveFileId: string) => Promise<void>;
+  unlinkDocument: (projectId: string, documentId: string) => Promise<void>;
+  fetchDocumentContent: (fileId: string) => Promise<DriveFileContent>;
+  fetchDriveFiles: (folderId?: string, query?: string) => Promise<void>;
+  checkForChanges: (projectId: string) => Promise<void>;
+  refreshDocuments: (projectId: string) => Promise<void>;
+  selectDocument: (document: Document | null) => void;
+  clearError: () => void;
+  reset: () => void;
+}
+
+// Helper function to get Firebase ID token for user authentication
+async function getAuthToken(): Promise<string> {
+  const { auth } = await import('@/lib/firebase/firebase');
+  const user = auth.currentUser;
+
+  if (!user) {
+    throw new Error('No authenticated user');
+  }
+
+  return user.getIdToken();
+}
+
+// Helper function to get Google OAuth access token for Drive API
+async function getGoogleAccessToken(): Promise<string> {
+  const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+  const token = await getDriveAccessToken();
+  if (!token) {
+    throw new Error('No Google OAuth access token available');
+  }
+  return token;
+}
+
+export const useDocumentsStore = create<DocumentsState>((set, get) => ({
+  // Initial state
+  documents: [],
+  selectedDocument: null,
+  documentContent: null,
+  driveFiles: [],
+  isLoading: false,
+  isLoadingContent: false,
+  syncStatus: 'idle',
+  error: null,
+  lastSyncTime: null,
+
+  // Fetch documents for a project
+  fetchDocuments: async (projectId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const token = await getAuthToken();
+      const response = await fetch(`/api/projects/${projectId}/documents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch documents: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      set({
+        documents: data.documents || [],
+        isLoading: false,
+        lastSyncTime: new Date(),
+      });
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch documents',
+        isLoading: false,
+      });
+    }
+  },
+
+  // Link a Google Drive file to a project
+  linkDriveFile: async (projectId: string, driveFileId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const token = await getAuthToken();
+      const response = await fetch(`/api/projects/${projectId}/documents`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ driveFileId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to link document');
+      }
+
+      const data = await response.json();
+      const newDocument = data.document;
+
+      // Add to documents list
+      const { documents } = get();
+      set({
+        documents: [...documents, newDocument],
+        isLoading: false,
+        lastSyncTime: new Date(),
+      });
+    } catch (error) {
+      console.error('Error linking document:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to link document',
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  // Unlink a document from a project
+  unlinkDocument: async (projectId: string, documentId: string) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const token = await getAuthToken();
+      const response = await fetch(`/api/projects/${projectId}/documents`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ documentId }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to unlink document');
+      }
+
+      // Remove from documents list
+      const { documents, selectedDocument } = get();
+      const updatedDocuments = documents.filter(d => d.id !== documentId);
+      const updatedSelectedDocument = selectedDocument?.id === documentId ? null : selectedDocument;
+
+      set({
+        documents: updatedDocuments,
+        selectedDocument: updatedSelectedDocument,
+        isLoading: false,
+        lastSyncTime: new Date(),
+      });
+    } catch (error) {
+      console.error('Error unlinking document:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to unlink document',
+        isLoading: false,
+      });
+      throw error;
+    }
+  },
+
+  // Fetch content for a specific document
+  fetchDocumentContent: async (fileId: string) => {
+    try {
+      set({ isLoadingContent: true, error: null });
+
+      const authToken = await getAuthToken();
+      const oauthToken = await getGoogleAccessToken();
+      const response = await fetch(`/api/drive/content/${fileId}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'X-Google-Access-Token': oauthToken,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch document content: ${response.statusText}`);
+      }
+
+      const content = await response.json();
+      set({
+        documentContent: content,
+        isLoadingContent: false,
+      });
+
+      return content;
+    } catch (error) {
+      console.error('Error fetching document content:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch document content',
+        isLoadingContent: false,
+      });
+      throw error;
+    }
+  },
+
+  // Fetch available Google Drive files
+  fetchDriveFiles: async (folderId?: string, query?: string) => {
+    try {
+      set({ isLoading: true, error: null });
+
+      const authToken = await getAuthToken();
+      const oauthToken = await getGoogleAccessToken();
+      const searchParams = new URLSearchParams();
+
+      if (folderId) searchParams.set('folderId', folderId);
+      if (query) searchParams.set('query', query);
+
+      const response = await fetch(`/api/drive/files?${searchParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'X-Google-Access-Token': oauthToken,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch Drive files: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      set({
+        driveFiles: data.files || [],
+        isLoading: false,
+      });
+    } catch (error) {
+      console.error('Error fetching Drive files:', error);
+      set({
+        error: error instanceof Error ? error.message : 'Failed to fetch Drive files',
+        isLoading: false,
+      });
+    }
+  },
+
+  // Check for document changes since last sync
+  checkForChanges: async (projectId: string) => {
+    try {
+      set({ syncStatus: 'syncing' });
+
+      // This would typically call an API endpoint that checks for changes
+      // For now, we'll just refresh the documents
+      await get().fetchDocuments(projectId);
+
+      set({
+        syncStatus: 'success',
+        lastSyncTime: new Date(),
+      });
+    } catch (error) {
+      console.error('Error checking for changes:', error);
+      set({
+        syncStatus: 'error',
+        error: error instanceof Error ? error.message : 'Failed to check for changes',
+      });
+    }
+  },
+
+  // Refresh documents with sync status tracking
+  refreshDocuments: async (projectId: string) => {
+    try {
+      set({ syncStatus: 'syncing' });
+
+      await get().fetchDocuments(projectId);
+
+      set({ syncStatus: 'success' });
+    } catch (error) {
+      console.error('Error refreshing documents:', error);
+      set({
+        syncStatus: 'error',
+        error: error instanceof Error ? error.message : 'Failed to refresh documents',
+      });
+    }
+  },
+
+  // Select a document for viewing/editing
+  selectDocument: (document: Document | null) => {
+    set({
+      selectedDocument: document,
+      documentContent: null, // Clear previous content
+    });
+  },
+
+  // Clear error state
+  clearError: () => {
+    set({ error: null });
+  },
+
+  // Reset store to initial state
+  reset: () => {
+    set({
+      documents: [],
+      selectedDocument: null,
+      documentContent: null,
+      driveFiles: [],
+      isLoading: false,
+      isLoadingContent: false,
+      syncStatus: 'idle',
+      error: null,
+      lastSyncTime: null,
+    });
+  },
+}));

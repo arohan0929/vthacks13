@@ -1,11 +1,15 @@
-import { getDriveService } from '../google-drive/drive-service';
-import { DocumentsService } from '../db/documents-service';
-import { getGeminiService } from '../ai/gemini-service';
-import { getGeminiEmbeddingService } from '../ai/gemini-embeddings';
-import { getChromaService } from '../vector/chroma-service';
-import { SemanticChunker, ChunkingConfig, DocumentChunk } from './semantic-chunker';
-import { AI_CONFIG } from '../ai/config';
-import { sql } from '../db/neon-client';
+import { getDriveService } from "../google-drive/drive-service";
+import { DocumentsService } from "../db/documents-service";
+import { getGeminiService } from "../ai/gemini-service";
+import { getGeminiEmbeddingService } from "../ai/gemini-embeddings";
+import { getChromaService } from "../vector/chroma-service";
+import {
+  SemanticChunker,
+  ChunkingConfig,
+  DocumentChunk,
+} from "./semantic-chunker";
+import { AI_CONFIG } from "../ai/config";
+import { sql } from "../db/neon-client";
 
 export interface ProcessingOptions {
   chunking_config?: Partial<ChunkingConfig>;
@@ -18,7 +22,7 @@ export interface ProcessingStatus {
   job_id: string;
   project_id: string;
   document_id?: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: {
     total_documents: number;
     processed_documents: number;
@@ -78,75 +82,119 @@ export class DocumentProcessor {
 
     try {
       // Create processing job
-      const status = await this.createProcessingJob(jobId, projectId, driveFileId);
+      const status = await this.createProcessingJob(
+        jobId,
+        projectId,
+        driveFileId
+      );
       this.activeJobs.set(jobId, status);
 
       // Step 1: Extract document content from Google Drive
-      await this.updateJobProgress(jobId, 'Extracting document content from Google Drive');
+      await this.updateJobProgress(
+        jobId,
+        "Extracting document content from Google Drive"
+      );
       const driveService = await getDriveService(oauthToken);
       const fileContent = await driveService.getFileContent(driveFileId);
 
       // Step 2: Store/update document metadata
-      await this.updateJobProgress(jobId, 'Updating document metadata');
+      await this.updateJobProgress(jobId, "Updating document metadata");
       const metadata = await driveService.getFileMetadata(driveFileId);
       const document = await this.documentsService.createDocument({
         project_id: projectId,
         drive_file_id: driveFileId,
-        file_name: metadata.name || 'Unknown',
+        file_name: metadata.name || "Unknown",
         file_type: this.getFileType(metadata.mimeType),
         mime_type: metadata.mimeType,
         drive_url: metadata.webViewLink,
         file_size: metadata.size ? parseInt(metadata.size) : null,
-        last_modified: metadata.modifiedTime ? new Date(metadata.modifiedTime) : null
+        last_modified: metadata.modifiedTime
+          ? new Date(metadata.modifiedTime)
+          : null,
       });
 
       // Step 3: Check if reprocessing is needed
-      if (!options.force_reprocess && await this.isDocumentProcessed(document.id)) {
-        await this.updateJobStatus(jobId, 'completed', 'Document already processed');
+      if (
+        !options.force_reprocess &&
+        (await this.isDocumentProcessed(document.id))
+      ) {
+        await this.updateJobStatus(
+          jobId,
+          "completed",
+          "Document already processed"
+        );
         const existingChunks = await this.getExistingChunks(document.id);
         return this.createProcessingResult(jobId, existingChunks, startTime);
       }
 
       // Step 4: Clean existing chunks if reprocessing
       if (options.force_reprocess) {
-        await this.updateJobProgress(jobId, 'Cleaning existing chunks');
+        await this.updateJobProgress(jobId, "Cleaning existing chunks");
         await this.cleanExistingChunks(projectId, document.id);
       }
 
       // Step 5: Chunk the document
-      await this.updateJobProgress(jobId, 'Performing semantic chunking');
+      await this.updateJobProgress(jobId, "Performing semantic chunking");
+
+      // For very large documents, use progressive chunking
+      let chunkingConfig = options.chunking_config || {};
+      if (fileContent.content.length > 100000) {
+        // 100KB+
+        console.log(
+          `Large document detected: ${fileContent.content.length} characters. Applying memory-optimized chunking.`
+        );
+        chunkingConfig = {
+          ...chunkingConfig,
+          max_chunk_size: Math.min(chunkingConfig.max_chunk_size || 500, 400),
+          target_chunk_size: Math.min(
+            chunkingConfig.target_chunk_size || 300,
+            350
+          ),
+          prefer_semantic_boundaries: true,
+          respect_section_boundaries: true,
+        };
+      }
+
       const chunkingResult = await this.semanticChunker.chunkDocument(
         fileContent.content,
         document.id,
         driveFileId,
-        metadata.name || 'Unknown',
-        options.chunking_config
+        metadata.name || "Unknown",
+        chunkingConfig
       );
 
       // Step 6: Generate embeddings if requested
       let embeddings: number[][] | undefined;
       if (options.include_embeddings !== false) {
-        await this.updateJobProgress(jobId, 'Generating embeddings');
+        await this.updateJobProgress(jobId, "Generating embeddings");
         embeddings = await this.generateEmbeddings(chunkingResult.chunks);
       }
 
       // Step 7: Store chunks in database
-      await this.updateJobProgress(jobId, 'Storing chunks in database');
+      await this.updateJobProgress(jobId, "Storing chunks in database");
       await this.storeChunksInDB(chunkingResult.chunks);
 
       // Step 8: Store in vector database if requested
       if (options.store_in_vector_db !== false && embeddings) {
-        await this.updateJobProgress(jobId, 'Storing in vector database');
-        await this.chromaService.addDocumentChunks(projectId, chunkingResult.chunks, embeddings);
+        await this.updateJobProgress(jobId, "Storing in vector database");
+        await this.chromaService.addDocumentChunks(
+          projectId,
+          chunkingResult.chunks,
+          embeddings
+        );
       }
 
       // Step 9: Update document processing status
-      await this.updateJobProgress(jobId, 'Finalizing processing');
+      await this.updateJobProgress(jobId, "Finalizing processing");
       await this.markDocumentAsProcessed(document.id);
 
       // Complete the job
       const endTime = Date.now();
-      await this.updateJobStatus(jobId, 'completed', 'Processing completed successfully');
+      await this.updateJobStatus(
+        jobId,
+        "completed",
+        "Processing completed successfully"
+      );
 
       return {
         job_id: jobId,
@@ -157,13 +205,16 @@ export class DocumentProcessor {
           total_tokens: chunkingResult.total_tokens,
           average_chunk_size: chunkingResult.average_chunk_size,
           processing_time_ms: endTime - startTime,
-          semantic_coherence: chunkingResult.semantic_coherence
-        }
+          semantic_coherence: chunkingResult.semantic_coherence,
+        },
       };
-
     } catch (error) {
       console.error(`Processing failed for job ${jobId}:`, error);
-      await this.updateJobStatus(jobId, 'failed', error instanceof Error ? error.message : 'Unknown error');
+      await this.updateJobStatus(
+        jobId,
+        "failed",
+        error instanceof Error ? error.message : "Unknown error"
+      );
       throw error;
     } finally {
       // Clean up active job tracking
@@ -185,10 +236,12 @@ export class DocumentProcessor {
 
     try {
       // Get all documents in the project
-      const documents = await this.documentsService.getDocumentsByProjectId(projectId);
+      const documents = await this.documentsService.getDocumentsByProjectId(
+        projectId
+      );
 
       if (documents.length === 0) {
-        throw new Error('No documents found in project');
+        throw new Error("No documents found in project");
       }
 
       // Create project-wide processing job
@@ -205,7 +258,9 @@ export class DocumentProcessor {
         try {
           await this.updateJobProgress(
             jobId,
-            `Processing document ${i + 1}/${documents.length}: ${document.file_name}`
+            `Processing document ${i + 1}/${documents.length}: ${
+              document.file_name
+            }`
           );
 
           const result = await this.processDocument(
@@ -217,19 +272,28 @@ export class DocumentProcessor {
 
           results.push(result);
           status.progress.processed_documents = i + 1;
-
         } catch (error) {
-          console.error(`Failed to process document ${document.file_name}:`, error);
+          console.error(
+            `Failed to process document ${document.file_name}:`,
+            error
+          );
           // Continue with other documents
         }
       }
 
-      await this.updateJobStatus(jobId, 'completed', `Processed ${results.length}/${documents.length} documents`);
+      await this.updateJobStatus(
+        jobId,
+        "completed",
+        `Processed ${results.length}/${documents.length} documents`
+      );
       return results;
-
     } catch (error) {
       console.error(`Project processing failed for job ${jobId}:`, error);
-      await this.updateJobStatus(jobId, 'failed', error instanceof Error ? error.message : 'Unknown error');
+      await this.updateJobStatus(
+        jobId,
+        "failed",
+        error instanceof Error ? error.message : "Unknown error"
+      );
       throw error;
     }
   }
@@ -237,34 +301,42 @@ export class DocumentProcessor {
   /**
    * Generate embeddings for chunks using Gemini
    */
-  private async generateEmbeddings(chunks: DocumentChunk[]): Promise<number[][]> {
+  private async generateEmbeddings(
+    chunks: DocumentChunk[]
+  ): Promise<number[][]> {
     if (chunks.length === 0) {
       return [];
     }
 
     try {
       // Extract text content from chunks
-      const texts = chunks.map(chunk => chunk.content);
+      const texts = chunks.map((chunk) => chunk.content);
 
       // Use Gemini embedding service with batching and rate limiting
       const result = await this.embeddingService.generateEmbeddings(texts, {
-        taskType: 'document'
+        taskType: "document",
       });
 
-      console.log(`Generated ${result.embeddings.length} embeddings using ${result.requestCount} API requests`);
+      console.log(
+        `Generated ${result.embeddings.length} embeddings using ${result.requestCount} API requests`
+      );
       console.log(`Token usage: ${result.tokensUsed} tokens`);
 
       return result.embeddings;
     } catch (error) {
-      console.error('Failed to generate embeddings with Gemini service:', error);
-      console.warn('Falling back to zero embeddings for all chunks');
+      console.error(
+        "Failed to generate embeddings with Gemini service:",
+        error
+      );
+      console.warn("Falling back to zero embeddings for all chunks");
 
       // Return zero embeddings as fallback
-      const fallbackEmbeddings = chunks.map(() => new Array(AI_CONFIG.embeddings.dimensions).fill(0));
+      const fallbackEmbeddings = chunks.map(() =>
+        new Array(AI_CONFIG.embeddings.dimensions).fill(0)
+      );
       return fallbackEmbeddings;
     }
   }
-
 
   /**
    * Store chunks in the database
@@ -315,15 +387,15 @@ export class DocumentProcessor {
       job_id: jobId,
       project_id: projectId,
       document_id: documentId,
-      status: 'pending',
+      status: "pending",
       progress: {
         total_documents: documentId ? 1 : 0,
         processed_documents: 0,
         total_chunks: 0,
         processed_chunks: 0,
-        current_operation: 'Initializing'
+        current_operation: "Initializing",
       },
-      timing: {}
+      timing: {},
     };
 
     try {
@@ -339,7 +411,7 @@ export class DocumentProcessor {
         )
       `;
     } catch (error) {
-      console.error('Failed to create processing job:', error);
+      console.error("Failed to create processing job:", error);
     }
 
     return status;
@@ -348,12 +420,15 @@ export class DocumentProcessor {
   /**
    * Update job progress
    */
-  private async updateJobProgress(jobId: string, operation: string): Promise<void> {
+  private async updateJobProgress(
+    jobId: string,
+    operation: string
+  ): Promise<void> {
     const status = this.activeJobs.get(jobId);
     if (status) {
       status.progress.current_operation = operation;
-      if (status.status === 'pending') {
-        status.status = 'running';
+      if (status.status === "pending") {
+        status.status = "running";
         status.timing.started_at = new Date();
       }
     }
@@ -368,7 +443,7 @@ export class DocumentProcessor {
         WHERE id = ${jobId}
       `;
     } catch (error) {
-      console.error('Failed to update job progress:', error);
+      console.error("Failed to update job progress:", error);
     }
   }
 
@@ -377,27 +452,32 @@ export class DocumentProcessor {
    */
   private async updateJobStatus(
     jobId: string,
-    status: ProcessingStatus['status'],
+    status: ProcessingStatus["status"],
     message?: string
   ): Promise<void> {
     const jobStatus = this.activeJobs.get(jobId);
     if (jobStatus) {
       jobStatus.status = status;
-      if (status === 'completed' || status === 'failed') {
+      if (status === "completed" || status === "failed") {
         jobStatus.timing.completed_at = new Date();
         if (jobStatus.timing.started_at) {
           jobStatus.timing.duration_seconds = Math.floor(
-            (jobStatus.timing.completed_at.getTime() - jobStatus.timing.started_at.getTime()) / 1000
+            (jobStatus.timing.completed_at.getTime() -
+              jobStatus.timing.started_at.getTime()) /
+              1000
           );
         }
       }
-      if (status === 'failed' && message) {
+      if (status === "failed" && message) {
         jobStatus.error = { message };
       }
     }
 
     try {
-      const completedAt = status === 'completed' || status === 'failed' ? 'CURRENT_TIMESTAMP' : null;
+      const completedAt =
+        status === "completed" || status === "failed"
+          ? "CURRENT_TIMESTAMP"
+          : null;
       await sql`
         UPDATE processing_jobs
         SET
@@ -408,7 +488,7 @@ export class DocumentProcessor {
         WHERE id = ${jobId}
       `;
     } catch (error) {
-      console.error('Failed to update job status:', error);
+      console.error("Failed to update job status:", error);
     }
   }
 
@@ -447,16 +527,18 @@ export class DocumentProcessor {
           processed_documents: row.processed_documents || 0,
           total_chunks: row.total_chunks || 0,
           processed_chunks: row.processed_chunks || 0,
-          current_operation: 'Completed'
+          current_operation: "Completed",
         },
         timing: {
           started_at: row.started_at ? new Date(row.started_at) : undefined,
-          completed_at: row.completed_at ? new Date(row.completed_at) : undefined
+          completed_at: row.completed_at
+            ? new Date(row.completed_at)
+            : undefined,
         },
-        error: row.error_message ? { message: row.error_message } : undefined
+        error: row.error_message ? { message: row.error_message } : undefined,
       };
     } catch (error) {
-      console.error('Failed to get job status:', error);
+      console.error("Failed to get job status:", error);
       return null;
     }
   }
@@ -468,18 +550,21 @@ export class DocumentProcessor {
   }
 
   private getFileType(mimeType: string | undefined): string {
-    if (!mimeType) return 'unknown';
+    if (!mimeType) return "unknown";
 
     const typeMap: Record<string, string> = {
-      'application/vnd.google-apps.document': 'google_doc',
-      'application/vnd.google-apps.spreadsheet': 'google_sheet',
-      'application/vnd.google-apps.presentation': 'google_slides',
-      'application/pdf': 'pdf',
-      'text/plain': 'text',
-      'text/csv': 'csv'
+      "application/vnd.google-apps.document": "google_doc",
+      "application/vnd.google-apps.spreadsheet": "google_sheet",
+      "application/vnd.google-apps.presentation": "google_slides",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        "docx",
+      "application/msword": "doc",
+      "application/pdf": "pdf",
+      "text/plain": "text",
+      "text/csv": "csv",
     };
 
-    return typeMap[mimeType] || 'other';
+    return typeMap[mimeType] || "other";
   }
 
   private async isDocumentProcessed(documentId: string): Promise<boolean> {
@@ -491,26 +576,31 @@ export class DocumentProcessor {
       `;
       return (result[0] as any).chunk_count > 0;
     } catch (error) {
-      console.error('Failed to check if document is processed:', error);
+      console.error("Failed to check if document is processed:", error);
       return false;
     }
   }
 
-  private async getExistingChunks(documentId: string): Promise<DocumentChunk[]> {
+  private async getExistingChunks(
+    documentId: string
+  ): Promise<DocumentChunk[]> {
     try {
       const result = await sql`
         SELECT * FROM document_chunks
         WHERE document_id = ${documentId}
         ORDER BY position
       `;
-      return result.map(row => this.dbRowToChunk(row as any));
+      return result.map((row) => this.dbRowToChunk(row as any));
     } catch (error) {
-      console.error('Failed to get existing chunks:', error);
+      console.error("Failed to get existing chunks:", error);
       return [];
     }
   }
 
-  private async cleanExistingChunks(projectId: string, documentId: string): Promise<void> {
+  private async cleanExistingChunks(
+    projectId: string,
+    documentId: string
+  ): Promise<void> {
     try {
       // Delete from vector database
       await this.chromaService.deleteChunksByDocument(projectId, documentId);
@@ -521,7 +611,7 @@ export class DocumentProcessor {
         WHERE document_id = ${documentId}
       `;
     } catch (error) {
-      console.error('Failed to clean existing chunks:', error);
+      console.error("Failed to clean existing chunks:", error);
       throw error;
     }
   }
@@ -534,7 +624,7 @@ export class DocumentProcessor {
         WHERE id = ${documentId}
       `;
     } catch (error) {
-      console.error('Failed to mark document as processed:', error);
+      console.error("Failed to mark document as processed:", error);
     }
   }
 
@@ -549,10 +639,18 @@ export class DocumentProcessor {
       metrics: {
         total_chunks: chunks.length,
         total_tokens: chunks.reduce((sum, chunk) => sum + chunk.tokens, 0),
-        average_chunk_size: chunks.length > 0 ? chunks.reduce((sum, chunk) => sum + chunk.tokens, 0) / chunks.length : 0,
+        average_chunk_size:
+          chunks.length > 0
+            ? chunks.reduce((sum, chunk) => sum + chunk.tokens, 0) /
+              chunks.length
+            : 0,
         processing_time_ms: Date.now() - startTime,
-        semantic_coherence: chunks.length > 0 ? chunks.reduce((sum, chunk) => sum + chunk.semantic_density, 0) / chunks.length : 0
-      }
+        semantic_coherence:
+          chunks.length > 0
+            ? chunks.reduce((sum, chunk) => sum + chunk.semantic_density, 0) /
+              chunks.length
+            : 0,
+      },
     };
   }
 
@@ -566,7 +664,7 @@ export class DocumentProcessor {
       heading_path: row.heading_path || [],
       hierarchy_level: row.hierarchy_level || 0,
       parent_section_id: row.parent_section_id,
-      chunk_type: row.chunk_type || 'paragraph',
+      chunk_type: row.chunk_type || "paragraph",
       semantic_density: row.semantic_density || 0,
       topic_keywords: row.topic_keywords || [],
       has_overlap_previous: row.has_overlap_previous || false,
@@ -578,10 +676,10 @@ export class DocumentProcessor {
       child_chunk_ids: row.child_chunk_ids || [],
       metadata: {
         created_at: new Date(row.created_at),
-        source_file_id: row.source_file_id || '',
-        source_file_name: row.source_file_name || '',
-        chunking_method: row.chunking_method || 'hybrid'
-      }
+        source_file_id: row.source_file_id || "",
+        source_file_name: row.source_file_name || "",
+        chunking_method: row.chunking_method || "hybrid",
+      },
     };
   }
 }

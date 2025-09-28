@@ -1,11 +1,24 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   FileText,
   Plus,
@@ -14,9 +27,9 @@ import {
   RefreshCw,
   AlertTriangle,
   Calendar,
-  FileIcon
-} from 'lucide-react';
-import { Document } from '@/lib/db/types';
+  FileIcon,
+} from "lucide-react";
+import { Document } from "@/lib/db/types";
 
 interface DocumentListProps {
   documents: Document[];
@@ -33,7 +46,7 @@ export function DocumentList({
   onLinkDocument,
   onUnlinkDocument,
   onRefreshDocuments,
-  showActions = true
+  showActions = true,
 }: DocumentListProps) {
   const [unlinkingIds, setUnlinkingIds] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
@@ -42,12 +55,12 @@ export function DocumentList({
     if (!onUnlinkDocument) return;
 
     try {
-      setUnlinkingIds(prev => new Set(prev).add(documentId));
+      setUnlinkingIds((prev) => new Set(prev).add(documentId));
       await onUnlinkDocument(documentId);
     } catch (error) {
-      console.error('Error unlinking document:', error);
+      console.error("Error unlinking document:", error);
     } finally {
-      setUnlinkingIds(prev => {
+      setUnlinkingIds((prev) => {
         const newSet = new Set(prev);
         newSet.delete(documentId);
         return newSet;
@@ -62,34 +75,42 @@ export function DocumentList({
       setRefreshing(true);
       await onRefreshDocuments();
     } catch (error) {
-      console.error('Error refreshing documents:', error);
+      console.error("Error refreshing documents:", error);
     } finally {
       setRefreshing(false);
     }
   };
 
   const getFileIcon = (mimeType: string) => {
-    if (mimeType?.includes('google-apps.document')) {
+    if (mimeType?.includes("google-apps.document")) {
       return <FileText size={16} className="text-blue-600" />;
     }
-    if (mimeType?.includes('google-apps.spreadsheet')) {
+    if (mimeType?.includes("google-apps.spreadsheet")) {
       return <FileIcon size={16} className="text-green-600" />;
     }
-    if (mimeType?.includes('google-apps.presentation')) {
+    if (mimeType?.includes("google-apps.presentation")) {
       return <FileIcon size={16} className="text-orange-600" />;
     }
-    if (mimeType?.includes('pdf')) {
+    if (
+      mimeType?.includes("wordprocessingml.document") ||
+      mimeType?.includes("msword")
+    ) {
+      return <FileText size={16} className="text-blue-600" />;
+    }
+    if (mimeType?.includes("pdf")) {
       return <FileIcon size={16} className="text-red-600" />;
     }
     return <FileText size={16} className="text-gray-600" />;
   };
 
   const getFileTypeBadge = (mimeType: string, fileType: string) => {
-    if (mimeType?.includes('google-apps.document')) return 'Google Doc';
-    if (mimeType?.includes('google-apps.spreadsheet')) return 'Google Sheet';
-    if (mimeType?.includes('google-apps.presentation')) return 'Google Slides';
-    if (mimeType?.includes('pdf')) return 'PDF';
-    return fileType || 'Unknown';
+    if (mimeType?.includes("google-apps.document")) return "Google Doc";
+    if (mimeType?.includes("google-apps.spreadsheet")) return "Google Sheet";
+    if (mimeType?.includes("google-apps.presentation")) return "Google Slides";
+    if (mimeType?.includes("wordprocessingml.document")) return "DOCX";
+    if (mimeType?.includes("msword")) return "DOC";
+    if (mimeType?.includes("pdf")) return "PDF";
+    return fileType || "Unknown";
   };
 
   const isDocumentStale = (document: Document) => {
@@ -138,7 +159,10 @@ export function DocumentList({
                 disabled={refreshing}
                 className="flex items-center gap-2"
               >
-                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                <RefreshCw
+                  size={16}
+                  className={refreshing ? "animate-spin" : ""}
+                />
                 Refresh
               </Button>
             )}
@@ -167,7 +191,10 @@ export function DocumentList({
               Link Google Drive documents to analyze compliance requirements
             </p>
             {onLinkDocument && (
-              <Button onClick={onLinkDocument} className="flex items-center gap-2">
+              <Button
+                onClick={onLinkDocument}
+                className="flex items-center gap-2"
+              >
                 <Plus size={16} />
                 Link Your First Document
               </Button>
@@ -179,7 +206,7 @@ export function DocumentList({
             <div className="flex items-center justify-between text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
               <span>{documents.length} documents linked</span>
               <span>
-                {documents.filter(doc => doc.last_analyzed).length} analyzed
+                {documents.filter((doc) => doc.last_analyzed).length} analyzed
               </span>
             </div>
 
@@ -191,7 +218,9 @@ export function DocumentList({
                   <TableHead>Type</TableHead>
                   <TableHead>Last Modified</TableHead>
                   <TableHead>Status</TableHead>
-                  {showActions && <TableHead className="w-[100px]">Actions</TableHead>}
+                  {showActions && (
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -199,7 +228,7 @@ export function DocumentList({
                   <TableRow key={doc.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {getFileIcon(doc.mime_type || '')}
+                        {getFileIcon(doc.mime_type || "")}
                         <div>
                           <div className="font-medium">{doc.file_name}</div>
                           {isDocumentStale(doc) && (
@@ -213,7 +242,10 @@ export function DocumentList({
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">
-                        {getFileTypeBadge(doc.mime_type || '', doc.file_type || '')}
+                        {getFileTypeBadge(
+                          doc.mime_type || "",
+                          doc.file_type || ""
+                        )}
                       </Badge>
                     </TableCell>
                     <TableCell>
@@ -221,16 +253,17 @@ export function DocumentList({
                         <Calendar size={12} />
                         {doc.last_modified
                           ? new Date(doc.last_modified).toLocaleDateString()
-                          : 'Unknown'
-                        }
+                          : "Unknown"}
                       </div>
                     </TableCell>
                     <TableCell>
                       {doc.last_analyzed ? (
                         <Badge
-                          variant={isDocumentStale(doc) ? "secondary" : "default"}
+                          variant={
+                            isDocumentStale(doc) ? "secondary" : "default"
+                          }
                         >
-                          {isDocumentStale(doc) ? 'Needs Analysis' : 'Analyzed'}
+                          {isDocumentStale(doc) ? "Needs Analysis" : "Analyzed"}
                         </Badge>
                       ) : (
                         <Badge variant="outline">Pending</Badge>
@@ -242,7 +275,9 @@ export function DocumentList({
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => window.open(doc.drive_url || '', '_blank')}
+                            onClick={() =>
+                              window.open(doc.drive_url || "", "_blank")
+                            }
                             disabled={!doc.drive_url}
                           >
                             <ExternalLink size={14} />

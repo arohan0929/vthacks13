@@ -1,8 +1,13 @@
-import { getDriveClient } from './drive-client';
-import { DriveFile, DriveFileContent } from '../db/types';
+import { getDriveClient } from "./drive-client";
+import { DriveFile, DriveFileContent } from "../db/types";
+import {
+  getTextExtractor,
+  TextExtractionResult,
+} from "../processing/text-extractor";
 
 export class DriveService {
   private client: any = null;
+  private textExtractor = getTextExtractor();
 
   async initialize(oauthToken?: string) {
     const driveClient = await getDriveClient(oauthToken);
@@ -10,7 +15,10 @@ export class DriveService {
   }
 
   // List files in Google Drive with optional folder filtering
-  async listFiles(folderId?: string, pageSize: number = 50): Promise<DriveFile[]> {
+  async listFiles(
+    folderId?: string,
+    pageSize: number = 50
+  ): Promise<DriveFile[]> {
     await this.ensureInitialized();
 
     try {
@@ -22,14 +30,15 @@ export class DriveService {
       const response = await this.client.files.list({
         q: query,
         pageSize,
-        fields: 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)',
-        orderBy: 'modifiedTime desc'
+        fields:
+          "files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)",
+        orderBy: "modifiedTime desc",
       });
 
       return response.data.files || [];
     } catch (error) {
-      console.error('Error listing Drive files:', error);
-      throw new Error('Failed to list Drive files');
+      console.error("Error listing Drive files:", error);
+      throw new Error("Failed to list Drive files");
     }
   }
 
@@ -40,12 +49,13 @@ export class DriveService {
     try {
       const response = await this.client.files.get({
         fileId,
-        fields: 'id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink'
+        fields:
+          "id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink",
       });
 
       return response.data;
     } catch (error) {
-      console.error('Error getting file metadata:', error);
+      console.error("Error getting file metadata:", error);
       throw new Error(`Failed to get metadata for file ${fileId}`);
     }
   }
@@ -57,33 +67,38 @@ export class DriveService {
     try {
       // Get file metadata first to determine how to extract content
       const metadata = await this.getFileMetadata(fileId);
-      let content = '';
+      let content = "";
 
       // Handle different file types
       switch (metadata.mimeType) {
-        case 'application/vnd.google-apps.document':
+        case "application/vnd.google-apps.document":
           // Google Docs - export as plain text
           content = await this.exportGoogleDoc(fileId);
           break;
 
-        case 'application/vnd.google-apps.spreadsheet':
+        case "application/vnd.google-apps.spreadsheet":
           // Google Sheets - export as CSV
           content = await this.exportGoogleSheet(fileId);
           break;
 
-        case 'application/vnd.google-apps.presentation':
+        case "application/vnd.google-apps.presentation":
           // Google Slides - export as plain text
           content = await this.exportGoogleSlides(fileId);
           break;
 
-        case 'application/pdf':
-          // PDF files - note: would need additional processing
-          content = await this.downloadFile(fileId);
+        case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+          // DOCX files - extract text using mammoth
+          content = await this.extractDocxText(fileId);
           break;
 
-        case 'text/plain':
-        case 'text/csv':
-        case 'application/json':
+        case "application/pdf":
+          // PDF files - extract text using pdf-parse
+          content = await this.extractPdfText(fileId);
+          break;
+
+        case "text/plain":
+        case "text/csv":
+        case "application/json":
           // Plain text files
           content = await this.downloadFile(fileId);
           break;
@@ -98,11 +113,10 @@ export class DriveService {
         fileId,
         content,
         mimeType: metadata.mimeType,
-        extractedAt: new Date()
+        extractedAt: new Date(),
       };
-
     } catch (error) {
-      console.error('Error getting file content:', error);
+      console.error("Error getting file content:", error);
       throw new Error(`Failed to get content for file ${fileId}`);
     }
   }
@@ -112,13 +126,13 @@ export class DriveService {
     try {
       const response = await this.client.files.export({
         fileId,
-        mimeType: 'text/plain'
+        mimeType: "text/plain",
       });
 
-      return response.data || '';
+      return response.data || "";
     } catch (error) {
-      console.error('Error exporting Google Doc:', error);
-      return '';
+      console.error("Error exporting Google Doc:", error);
+      return "";
     }
   }
 
@@ -127,13 +141,13 @@ export class DriveService {
     try {
       const response = await this.client.files.export({
         fileId,
-        mimeType: 'text/csv'
+        mimeType: "text/csv",
       });
 
-      return response.data || '';
+      return response.data || "";
     } catch (error) {
-      console.error('Error exporting Google Sheet:', error);
-      return '';
+      console.error("Error exporting Google Sheet:", error);
+      return "";
     }
   }
 
@@ -142,13 +156,13 @@ export class DriveService {
     try {
       const response = await this.client.files.export({
         fileId,
-        mimeType: 'text/plain'
+        mimeType: "text/plain",
       });
 
-      return response.data || '';
+      return response.data || "";
     } catch (error) {
-      console.error('Error exporting Google Slides:', error);
-      return '';
+      console.error("Error exporting Google Slides:", error);
+      return "";
     }
   }
 
@@ -157,18 +171,71 @@ export class DriveService {
     try {
       const response = await this.client.files.get({
         fileId,
-        alt: 'media'
+        alt: "media",
       });
 
-      return response.data || '';
+      return response.data || "";
     } catch (error) {
-      console.error('Error downloading file:', error);
-      return '';
+      console.error("Error downloading file:", error);
+      return "";
+    }
+  }
+
+  // Extract text from DOCX files
+  private async extractDocxText(fileId: string): Promise<string> {
+    try {
+      const response = await this.client.files.get(
+        {
+          fileId,
+          alt: "media",
+        },
+        {
+          responseType: "arraybuffer",
+        }
+      );
+
+      const buffer = Buffer.from(response.data);
+      const result = await this.textExtractor.extractFromDocx(buffer);
+
+      return result.text;
+    } catch (error) {
+      console.error("Error extracting text from DOCX:", error);
+      return `Error: Could not extract text from DOCX file (${
+        error instanceof Error ? error.message : "Unknown error"
+      })`;
+    }
+  }
+
+  // Extract text from PDF files
+  private async extractPdfText(fileId: string): Promise<string> {
+    try {
+      const response = await this.client.files.get(
+        {
+          fileId,
+          alt: "media",
+        },
+        {
+          responseType: "arraybuffer",
+        }
+      );
+
+      const buffer = Buffer.from(response.data);
+      const result = await this.textExtractor.extractFromPdf(buffer);
+
+      return result.text;
+    } catch (error) {
+      console.error("Error extracting text from PDF:", error);
+      return `Error: Could not extract text from PDF file (${
+        error instanceof Error ? error.message : "Unknown error"
+      })`;
     }
   }
 
   // Search files by name or content
-  async searchFiles(query: string, pageSize: number = 20): Promise<DriveFile[]> {
+  async searchFiles(
+    query: string,
+    pageSize: number = 20
+  ): Promise<DriveFile[]> {
     await this.ensureInitialized();
 
     try {
@@ -177,19 +244,23 @@ export class DriveService {
       const response = await this.client.files.list({
         q: `${searchQuery} and trashed=false`,
         pageSize,
-        fields: 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)',
-        orderBy: 'relevance desc'
+        fields:
+          "files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)",
+        orderBy: "relevance desc",
       });
 
       return response.data.files || [];
     } catch (error) {
-      console.error('Error searching Drive files:', error);
-      throw new Error('Failed to search Drive files');
+      console.error("Error searching Drive files:", error);
+      throw new Error("Failed to search Drive files");
     }
   }
 
   // Get files modified after a specific date
-  async getRecentlyModifiedFiles(since: Date, pageSize: number = 50): Promise<DriveFile[]> {
+  async getRecentlyModifiedFiles(
+    since: Date,
+    pageSize: number = 50
+  ): Promise<DriveFile[]> {
     await this.ensureInitialized();
 
     try {
@@ -199,19 +270,23 @@ export class DriveService {
       const response = await this.client.files.list({
         q: query,
         pageSize,
-        fields: 'files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)',
-        orderBy: 'modifiedTime desc'
+        fields:
+          "files(id,name,mimeType,size,modifiedTime,webViewLink,parents,thumbnailLink,iconLink)",
+        orderBy: "modifiedTime desc",
       });
 
       return response.data.files || [];
     } catch (error) {
-      console.error('Error getting recently modified files:', error);
-      throw new Error('Failed to get recently modified files');
+      console.error("Error getting recently modified files:", error);
+      throw new Error("Failed to get recently modified files");
     }
   }
 
   // Check if specific files have been modified since a given date
-  async checkFilesForChanges(fileIds: string[], since: Date): Promise<{ fileId: string; modified: boolean; lastModified?: Date }[]> {
+  async checkFilesForChanges(
+    fileIds: string[],
+    since: Date
+  ): Promise<{ fileId: string; modified: boolean; lastModified?: Date }[]> {
     await this.ensureInitialized();
 
     const results = [];
@@ -225,13 +300,13 @@ export class DriveService {
         results.push({
           fileId,
           modified,
-          lastModified
+          lastModified,
         });
       } catch (error) {
         console.error(`Error checking file ${fileId} for changes:`, error);
         results.push({
           fileId,
-          modified: false
+          modified: false,
         });
       }
     }
@@ -251,7 +326,9 @@ export class DriveService {
 let driveServiceInstance: DriveService | null = null;
 
 // Get or create the Drive service instance
-export async function getDriveService(oauthToken?: string): Promise<DriveService> {
+export async function getDriveService(
+  oauthToken?: string
+): Promise<DriveService> {
   if (!driveServiceInstance) {
     driveServiceInstance = new DriveService();
   }

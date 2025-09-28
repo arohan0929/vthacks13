@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import {
   initializeAgentSystem,
   getAgentRegistry,
-  IdeationInput
-} from '@/lib/agents';
+  IdeationInput,
+} from "@/lib/agents";
+import { errorLogger } from "@/lib/utils/error-logger";
 
 // Initialize the agent system on first load
 let systemInitialized = false;
@@ -19,17 +20,78 @@ export async function POST(request: NextRequest) {
   try {
     await ensureSystemInitialized();
 
-    const body = await request.json();
+    // Parse and validate request body
+    let body: Record<string, unknown>;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      errorLogger.logEndpointError(parseError, "/api/agents/chat", body);
+      return NextResponse.json(
+        {
+          error: "Invalid JSON in request body",
+          details:
+            parseError instanceof Error
+              ? parseError.message
+              : "Unknown parsing error",
+        },
+        { status: 400 }
+      );
+    }
+
     const {
       projectId,
       userQuery,
       conversationHistory = [],
-      context = {}
+      context = {},
     } = body;
 
-    if (!projectId || !userQuery) {
+    // Enhanced input validation with detailed error messages
+    const validationErrors: string[] = [];
+
+    if (
+      !projectId ||
+      typeof projectId !== "string" ||
+      projectId.trim().length === 0
+    ) {
+      validationErrors.push(
+        "Project ID is required and must be a non-empty string"
+      );
+    }
+
+    if (
+      !userQuery ||
+      typeof userQuery !== "string" ||
+      userQuery.trim().length === 0
+    ) {
+      validationErrors.push(
+        "User query is required and must be a non-empty string"
+      );
+    }
+
+    if (conversationHistory && !Array.isArray(conversationHistory)) {
+      validationErrors.push("Conversation history must be an array");
+    }
+
+    if (context && typeof context !== "object") {
+      validationErrors.push("Context must be an object");
+    }
+
+    if (validationErrors.length > 0) {
+      errorLogger.logValidationError(validationErrors, {
+        endpoint: "/api/agents/chat",
+        projectId,
+      });
       return NextResponse.json(
-        { error: 'Project ID and user query are required' },
+        {
+          error: "Input validation failed",
+          details: validationErrors,
+          received: {
+            projectId: projectId ? "provided" : "missing",
+            userQuery: userQuery ? "provided" : "missing",
+            hasConversationHistory: Array.isArray(conversationHistory),
+            hasContext: typeof context === "object",
+          },
+        },
         { status: 400 }
       );
     }
@@ -39,44 +101,50 @@ export async function POST(request: NextRequest) {
     // Find the ideation agent for this project
     const projectAgents = registry.discover({
       tags: [projectId],
-      capabilities: ['knowledge_chat']
+      capabilities: ["knowledge_chat"],
     });
 
-    const ideationAgent = projectAgents.find(agent =>
-      agent.metadata.id.includes('ideation')
+    const ideationAgent = projectAgents.find((agent) =>
+      agent.metadata.id.includes("ideation")
     );
 
     if (!ideationAgent) {
       return NextResponse.json(
-        { error: 'Ideation agent not found for this project' },
+        { error: "Ideation agent not found for this project" },
         { status: 404 }
       );
     }
 
-    // Create chat context
+    // Create properly structured chat context
     const chatContext = {
-      projectId,
-      userId: 'user-1', // Would come from auth in production
+      projectId: projectId.trim(),
+      userId: context.userId || "user-1", // Would come from auth in production
       sessionId: context.sessionId || `session-${Date.now()}`,
       conversationHistory: conversationHistory || [],
       sharedState: context.sharedState || {},
-      preferences: context.preferences || {}
+      preferences: context.preferences || {},
     };
 
     // Prepare ideation input for chat mode
     const ideationInput: IdeationInput = {
-      mode: 'chat',
+      mode: "chat",
       context: {
-        projectDescription: context.projectDescription || '',
+        projectDescription: (context.projectDescription || "").trim(),
         detectedFrameworks: context.detectedFrameworks || [],
         complianceGaps: context.complianceGaps || [],
-        userQuery
+        userQuery: userQuery.trim(),
       },
-      conversationHistory: conversationHistory.map((msg: any) => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: new Date(msg.timestamp || Date.now())
-      }))
+      conversationHistory: (conversationHistory || []).map(
+        (msg: {
+          role?: string;
+          content?: string;
+          timestamp?: string | number;
+        }) => ({
+          role: msg.role || "user",
+          content: (msg.content || "").trim(),
+          timestamp: new Date(msg.timestamp || Date.now()),
+        })
+      ),
     };
 
     try {
@@ -91,20 +159,20 @@ export async function POST(request: NextRequest) {
       const updatedHistory = [
         ...conversationHistory,
         {
-          role: 'user',
+          role: "user",
           content: userQuery,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         },
         {
-          role: 'assistant',
+          role: "assistant",
           content: chatResult.response,
           timestamp: new Date().toISOString(),
           metadata: {
             sources: chatResult.sources,
             suggestedActions: chatResult.suggestedActions,
-            relatedTopics: chatResult.relatedTopics
-          }
-        }
+            relatedTopics: chatResult.relatedTopics,
+          },
+        },
       ];
 
       return NextResponse.json({
@@ -118,27 +186,38 @@ export async function POST(request: NextRequest) {
         metadata: {
           agentId: ideationAgent.metadata.id,
           timestamp: new Date().toISOString(),
-          sessionId: chatContext.sessionId
-        }
+          sessionId: chatContext.sessionId,
+        },
+      });
+    } catch (agentError) {
+      errorLogger.logError(agentError, {
+        endpoint: "/api/agents/chat",
+        projectId,
+        operation: "chat_execution",
+        agentId: ideationAgent?.metadata?.id,
       });
 
-    } catch (agentError) {
-      console.error('Chat agent execution error:', agentError);
       return NextResponse.json(
         {
-          error: 'Chat processing failed',
-          details: agentError instanceof Error ? agentError.message : 'Unknown error'
+          error: "Chat processing failed",
+          details:
+            agentError instanceof Error ? agentError.message : "Unknown error",
+          context: {
+            projectId,
+            agentId: ideationAgent?.metadata?.id,
+          },
         },
         { status: 500 }
       );
     }
-
   } catch (error) {
-    console.error('Chat endpoint error:', error);
+    errorLogger.logEndpointError(error, "/api/agents/chat");
+
     return NextResponse.json(
       {
-        error: 'Chat request failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Chat request failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -150,12 +229,12 @@ export async function GET(request: NextRequest) {
     await ensureSystemInitialized();
 
     const { searchParams } = new URL(request.url);
-    const projectId = searchParams.get('projectId');
-    const sessionId = searchParams.get('sessionId');
+    const projectId = searchParams.get("projectId");
+    const sessionId = searchParams.get("sessionId");
 
     if (!projectId) {
       return NextResponse.json(
-        { error: 'Project ID is required' },
+        { error: "Project ID is required" },
         { status: 400 }
       );
     }
@@ -165,16 +244,16 @@ export async function GET(request: NextRequest) {
     // Find the ideation agent for this project
     const projectAgents = registry.discover({
       tags: [projectId],
-      capabilities: ['knowledge_chat']
+      capabilities: ["knowledge_chat"],
     });
 
-    const ideationAgent = projectAgents.find(agent =>
-      agent.metadata.id.includes('ideation')
+    const ideationAgent = projectAgents.find((agent) =>
+      agent.metadata.id.includes("ideation")
     );
 
     if (!ideationAgent) {
       return NextResponse.json(
-        { error: 'Ideation agent not found for this project' },
+        { error: "Ideation agent not found for this project" },
         { status: 404 }
       );
     }
@@ -192,25 +271,26 @@ export async function GET(request: NextRequest) {
         status: ideationAgent.status,
         health: agentStatus[ideationAgent.metadata.id],
         capabilities: ideationAgent.metadata.capabilities
-          .filter(cap => cap.name.includes('chat') || cap.name.includes('knowledge'))
-          .map(cap => cap.name)
+          .filter(
+            (cap) => cap.name.includes("chat") || cap.name.includes("knowledge")
+          )
+          .map((cap) => cap.name),
       },
       chatFeatures: {
         knowledgeRetrieval: true,
         contextAwareness: true,
         sourceAttribution: true,
         suggestedActions: true,
-        relatedTopics: true
+        relatedTopics: true,
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
-    console.error('Chat status endpoint error:', error);
+    console.error("Chat status endpoint error:", error);
     return NextResponse.json(
       {
-        error: 'Failed to get chat status',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Failed to get chat status",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from "zod";
 
 export interface AgentCapability {
   name: string;
@@ -22,7 +22,7 @@ export interface AgentContext {
   userId?: string;
   sessionId: string;
   conversationHistory: Array<{
-    role: 'user' | 'assistant' | 'system';
+    role: "user" | "assistant" | "system";
     content: string;
     timestamp: Date;
     metadata?: Record<string, any>;
@@ -52,7 +52,7 @@ export interface AgentOutput<T = any> {
 export interface AgentError {
   code: string;
   message: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
+  severity: "low" | "medium" | "high" | "critical";
   recoverable: boolean;
   context?: Record<string, any>;
 }
@@ -67,7 +67,7 @@ export interface ToolResult {
 }
 
 export interface AgentHealth {
-  status: 'healthy' | 'degraded' | 'unhealthy';
+  status: "healthy" | "degraded" | "unhealthy";
   lastCheck: Date;
   issues: string[];
   uptime: number;
@@ -81,23 +81,35 @@ export const AgentInputSchema = z.object({
     projectId: z.string(),
     userId: z.string().optional(),
     sessionId: z.string(),
-    conversationHistory: z.array(z.object({
-      role: z.enum(['user', 'assistant', 'system']),
-      content: z.string(),
-      timestamp: z.date(),
-      metadata: z.record(z.any()).optional()
-    })),
-    sharedState: z.record(z.any()),
-    preferences: z.record(z.any())
+    conversationHistory: z
+      .array(
+        z.object({
+          role: z.enum(["user", "assistant", "system"]),
+          content: z.string(),
+          timestamp: z
+            .union([z.date(), z.string()])
+            .transform((val) =>
+              typeof val === "string" ? new Date(val) : val
+            ),
+          metadata: z.record(z.any()).optional(),
+        })
+      )
+      .default([]),
+    sharedState: z.record(z.any()).default({}),
+    preferences: z.record(z.any()).default({}),
   }),
-  toolResults: z.array(z.object({
-    toolName: z.string(),
-    input: z.any(),
-    output: z.any(),
-    success: z.boolean(),
-    executionTime: z.number(),
-    error: z.string().optional()
-  })).optional()
+  toolResults: z
+    .array(
+      z.object({
+        toolName: z.string(),
+        input: z.any(),
+        output: z.any(),
+        success: z.boolean(),
+        executionTime: z.number(),
+        error: z.string().optional(),
+      })
+    )
+    .optional(),
 });
 
 export const AgentOutputSchema = z.object({
@@ -106,14 +118,18 @@ export const AgentOutputSchema = z.object({
     confidence: z.number().min(0).max(1),
     executionTime: z.number(),
     toolsUsed: z.array(z.string()),
-    reasoning: z.string().optional()
+    reasoning: z.string().optional(),
   }),
   nextActions: z.array(z.string()).optional(),
-  errors: z.array(z.object({
-    code: z.string(),
-    message: z.string(),
-    severity: z.enum(['low', 'medium', 'high', 'critical']),
-    recoverable: z.boolean(),
-    context: z.record(z.any()).optional()
-  })).optional()
+  errors: z
+    .array(
+      z.object({
+        code: z.string(),
+        message: z.string(),
+        severity: z.enum(["low", "medium", "high", "critical"]),
+        recoverable: z.boolean(),
+        context: z.record(z.any()).optional(),
+      })
+    )
+    .optional(),
 });

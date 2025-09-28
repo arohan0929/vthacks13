@@ -1,62 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { auth } from '@/lib/firebase/firebase';
-import { getProjectsService } from '@/lib/db/projects-service';
-
-// Helper function to verify Firebase token and get user
-async function verifyTokenAndGetUser(authHeader: string | null) {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Error('Missing or invalid authorization header');
-  }
-
-  const idToken = authHeader.split('Bearer ')[1];
-
-  let decodedToken;
-
-  try {
-    const admin = await import('firebase-admin');
-
-    // Initialize Firebase Admin if not already initialized
-    if (!admin.apps.length) {
-      const serviceAccount = {
-        projectId: process.env.FIREBASE_PROJECT_ID || 'vthacks13-74208',
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      };
-
-      if (!serviceAccount.clientEmail || !serviceAccount.privateKey) {
-        throw new Error('Firebase Admin credentials not configured');
-      }
-
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-    }
-
-    decodedToken = await admin.auth().verifyIdToken(idToken);
-  } catch (error) {
-    console.error('Firebase Admin verification failed:', error);
-    throw new Error('Invalid token');
-  }
-
-  const projectsService = getProjectsService();
-
-  // Get or create user
-  let user = await projectsService.getUserByFirebaseId(decodedToken.uid);
-  if (!user) {
-    user = await projectsService.createUser({
-      firebase_uid: decodedToken.uid,
-      email: decodedToken.email || '',
-      name: decodedToken.name,
-    });
-  }
-
-  return user;
-}
+import { NextRequest, NextResponse } from "next/server";
+import { verifyTokenAndGetUser } from "@/lib/auth/auth-service";
+import { getProjectsService } from "@/lib/db/projects-service";
 
 // GET /api/projects - Get all projects for the authenticated user
 export async function GET(request: NextRequest) {
   try {
-    const user = await verifyTokenAndGetUser(request.headers.get('authorization'));
+    const user = await verifyTokenAndGetUser(
+      request.headers.get("authorization")
+    );
     const projectsService = getProjectsService();
 
     // Get project summaries for the user
@@ -64,17 +15,35 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ projects });
   } catch (error) {
-    console.error('Error in GET /api/projects:', error);
+    console.error("Error in GET /api/projects:", error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (
+        error.message.includes("token") ||
+        error.message.includes("authorization")
+      ) {
+        return NextResponse.json(
+          { error: "Authentication failed", details: error.message },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes("Firebase Admin credentials not configured")) {
+        return NextResponse.json(
+          {
+            error: "Server configuration error",
+            details: "Firebase Admin not properly configured",
+          },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }
@@ -83,15 +52,17 @@ export async function GET(request: NextRequest) {
 // POST /api/projects - Create a new project
 export async function POST(request: NextRequest) {
   try {
-    const user = await verifyTokenAndGetUser(request.headers.get('authorization'));
+    const user = await verifyTokenAndGetUser(
+      request.headers.get("authorization")
+    );
 
     // Parse request body
     const body = await request.json();
     const { name, description } = body;
 
-    if (!name || typeof name !== 'string' || name.trim().length === 0) {
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
       return NextResponse.json(
-        { error: 'Project name is required' },
+        { error: "Project name is required" },
         { status: 400 }
       );
     }
@@ -107,17 +78,45 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ project }, { status: 201 });
   } catch (error) {
-    console.error('Error in POST /api/projects:', error);
+    console.error("Error in POST /api/projects:", error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (
+        error.message.includes("token") ||
+        error.message.includes("authorization")
+      ) {
+        return NextResponse.json(
+          { error: "Authentication failed", details: error.message },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes("Firebase Admin credentials not configured")) {
+        return NextResponse.json(
+          {
+            error: "Server configuration error",
+            details: "Firebase Admin not properly configured",
+          },
+          { status: 500 }
+        );
+      }
+
+      if (
+        error.message.includes("database") ||
+        error.message.includes("connection")
+      ) {
+        return NextResponse.json(
+          { error: "Database connection error", details: error.message },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
       { status: 500 }
     );
   }

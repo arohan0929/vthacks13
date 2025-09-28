@@ -1,5 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { SemanticChunker, ChunkingConfig } from '@/lib/processing/semantic-chunker';
+import { NextRequest, NextResponse } from "next/server";
+import {
+  SemanticChunker,
+  ChunkingConfig,
+} from "@/lib/processing/semantic-chunker";
 
 // POST /api/test/chunk - Test semantic chunking with provided text
 export async function POST(request: NextRequest) {
@@ -7,18 +10,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { content, config = {} } = body;
 
-    if (!content || typeof content !== 'string') {
+    if (!content || typeof content !== "string") {
       return NextResponse.json(
-        { error: 'Content is required and must be a string' },
+        { error: "Content is required and must be a string" },
         { status: 400 }
       );
     }
 
     if (content.trim().length === 0) {
       return NextResponse.json(
-        { error: 'Content cannot be empty' },
+        { error: "Content cannot be empty" },
         { status: 400 }
       );
+    }
+
+    // Check for extremely large documents and apply appropriate chunking strategy
+    if (content.length > 100000) {
+      // 100KB
+      console.log(`Processing large document: ${content.length} characters`);
+      // Use more aggressive chunking for very large documents
+      config.max_chunk_size = Math.min(config.max_chunk_size || 500, 400);
+      config.target_chunk_size = Math.min(config.target_chunk_size || 300, 350);
     }
 
     // Default chunking configuration
@@ -29,7 +41,7 @@ export async function POST(request: NextRequest) {
       overlap_percentage: 10,
       prefer_semantic_boundaries: true,
       respect_section_boundaries: true,
-      include_heading_context: true
+      include_heading_context: true,
     };
 
     const finalConfig = { ...defaultConfig, ...config };
@@ -37,16 +49,28 @@ export async function POST(request: NextRequest) {
     // Create chunker and process content
     const chunker = new SemanticChunker();
 
-    const result = await chunker.chunkDocument(
-      content,
-      'test-doc-' + Date.now(),
-      'test-file-' + Date.now(),
-      'test-content.md',
-      finalConfig
-    );
+    // Add timeout for large document processing
+    const processWithTimeout = (timeout: number = 30000) => {
+      return Promise.race([
+        chunker.chunkDocument(
+          content,
+          "test-doc-" + Date.now(),
+          "test-file-" + Date.now(),
+          "test-content.md",
+          finalConfig
+        ),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Processing timeout")), timeout)
+        ),
+      ]);
+    };
+
+    const result = (await processWithTimeout(
+      content.length > 100000 ? 60000 : 30000
+    )) as any;
 
     // Transform chunks for response (add created_at as string)
-    const responseChunks = result.chunks.map(chunk => ({
+    const responseChunks = result.chunks.map((chunk) => ({
       id: chunk.id,
       content: chunk.content,
       tokens: chunk.tokens,
@@ -65,7 +89,7 @@ export async function POST(request: NextRequest) {
       child_chunk_ids: chunk.child_chunk_ids,
       chunking_method: chunk.metadata.chunking_method,
       created_at: chunk.metadata.created_at.toISOString(),
-      source_file_name: chunk.metadata.source_file_name
+      source_file_name: chunk.metadata.source_file_name,
     }));
 
     return NextResponse.json({
@@ -80,40 +104,58 @@ export async function POST(request: NextRequest) {
       processing_metadata: {
         input_length: content.length,
         config_used: finalConfig,
-        processing_timestamp: new Date().toISOString()
-      }
+        processing_timestamp: new Date().toISOString(),
+      },
     });
-
   } catch (error) {
-    console.error('Error in test chunking endpoint:', error);
+    console.error("Error in test chunking endpoint:", error);
 
     // Handle specific errors
     if (error instanceof Error) {
-      if (error.message.includes('tokenizer')) {
+      if (error.message.includes("Processing timeout")) {
         return NextResponse.json(
           {
-            error: 'Tokenization failed',
-            details: 'Error counting tokens in the provided text'
+            error: "Processing timeout",
+            details:
+              "Document processing took too long. Try reducing document size or using smaller chunk sizes.",
+            suggestions: [
+              "Reduce document size",
+              "Use smaller max_chunk_size",
+              "Split document into smaller sections",
+            ],
+          },
+          { status: 408 }
+        );
+      }
+
+      if (error.message.includes("tokenizer")) {
+        return NextResponse.json(
+          {
+            error: "Tokenization failed",
+            details: "Error counting tokens in the provided text",
           },
           { status: 500 }
         );
       }
 
-      if (error.message.includes('parse') || error.message.includes('structure')) {
+      if (
+        error.message.includes("parse") ||
+        error.message.includes("structure")
+      ) {
         return NextResponse.json(
           {
-            error: 'Document parsing failed',
-            details: 'Error analyzing document structure'
+            error: "Document parsing failed",
+            details: "Error analyzing document structure",
           },
           { status: 500 }
         );
       }
 
-      if (error.message.includes('semantic')) {
+      if (error.message.includes("semantic")) {
         return NextResponse.json(
           {
-            error: 'Semantic analysis failed',
-            details: 'Error in semantic boundary detection'
+            error: "Semantic analysis failed",
+            details: "Error in semantic boundary detection",
           },
           { status: 500 }
         );
@@ -122,9 +164,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        error: 'Chunking failed',
-        details: error instanceof Error ? error.message : 'Unknown error occurred',
-        timestamp: new Date().toISOString()
+        error: "Chunking failed",
+        details:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -134,74 +177,74 @@ export async function POST(request: NextRequest) {
 // GET /api/test/chunk - Get information about the chunking test endpoint
 export async function GET() {
   return NextResponse.json({
-    endpoint: '/api/test/chunk',
-    description: 'Test endpoint for semantic chunking functionality',
-    methods: ['POST'],
+    endpoint: "/api/test/chunk",
+    description: "Test endpoint for semantic chunking functionality",
+    methods: ["POST"],
     parameters: {
       content: {
-        type: 'string',
+        type: "string",
         required: true,
-        description: 'Text content to be chunked'
+        description: "Text content to be chunked",
       },
       config: {
-        type: 'object',
+        type: "object",
         required: false,
-        description: 'Chunking configuration options',
+        description: "Chunking configuration options",
         properties: {
           min_chunk_size: {
-            type: 'number',
+            type: "number",
             default: 100,
-            description: 'Minimum tokens per chunk'
+            description: "Minimum tokens per chunk",
           },
           max_chunk_size: {
-            type: 'number',
+            type: "number",
             default: 500,
-            description: 'Maximum tokens per chunk'
+            description: "Maximum tokens per chunk",
           },
           target_chunk_size: {
-            type: 'number',
+            type: "number",
             default: 300,
-            description: 'Target tokens per chunk'
+            description: "Target tokens per chunk",
           },
           overlap_percentage: {
-            type: 'number',
+            type: "number",
             default: 10,
-            description: 'Percentage overlap between chunks'
+            description: "Percentage overlap between chunks",
           },
           prefer_semantic_boundaries: {
-            type: 'boolean',
+            type: "boolean",
             default: true,
-            description: 'Prefer semantic boundaries over structural ones'
+            description: "Prefer semantic boundaries over structural ones",
           },
           respect_section_boundaries: {
-            type: 'boolean',
+            type: "boolean",
             default: true,
-            description: 'Never split across major sections'
+            description: "Never split across major sections",
           },
           include_heading_context: {
-            type: 'boolean',
+            type: "boolean",
             default: true,
-            description: 'Include parent headings in chunk context'
-          }
-        }
-      }
+            description: "Include parent headings in chunk context",
+          },
+        },
+      },
     },
     example_request: {
       content: "# Example Document\n\nThis is sample content...",
       config: {
         max_chunk_size: 400,
-        overlap_percentage: 15
-      }
+        overlap_percentage: 15,
+      },
     },
     response_format: {
-      success: 'boolean',
-      chunks: 'array of chunk objects',
-      total_chunks: 'number',
-      total_tokens: 'number',
-      average_chunk_size: 'number',
-      semantic_coherence: 'number (0-1)',
-      hierarchy_preservation: 'number (0-1)',
-      overlap_efficiency: 'number (0-1)'
-    }
+      success: "boolean",
+      chunks: "array of chunk objects",
+      total_chunks: "number",
+      total_tokens: "number",
+      average_chunk_size: "number",
+      semantic_coherence: "number (0-1)",
+      hierarchy_preservation: "number (0-1)",
+      overlap_efficiency: "number (0-1)",
+    },
   });
 }

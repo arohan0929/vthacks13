@@ -1,15 +1,28 @@
-'use client';
+"use client";
 
-import { useEffect, useState, use } from 'react';
-import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/stores/auth-store/auth-store';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Progress } from '@/components/ui/progress';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useEffect, useState, use } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthStore } from "@/stores/auth-store/auth-store";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   FileText,
   Shield,
@@ -17,14 +30,16 @@ import {
   RefreshCw,
   AlertTriangle,
   Lightbulb,
-  Folder
-} from 'lucide-react';
-import { GoogleDrivePicker } from '@/components/processor/google-drive-picker';
-import { Navbar } from '@/components/navigation/navbar';
-import { SourcesUpload } from '@/components/dashboard/sources-upload';
-import { IdeateSection } from '@/components/dashboard/ideate/ideate-section';
-import { CompliancePlaceholder } from '@/components/dashboard/compliance-placeholder';
-import { Project, Document } from '@/lib/db/types';
+  Folder,
+} from "lucide-react";
+import { GoogleDrivePicker } from "@/components/processor/google-drive-picker";
+import { Navbar } from "@/components/navigation/navbar";
+import { SourcesUpload } from "@/components/dashboard/sources-upload";
+import { IdeateSection } from "@/components/dashboard/ideate/ideate-section";
+import { CompliancePlaceholder } from "@/components/dashboard/compliance-placeholder";
+import { ProcessingStatus } from "@/components/processor/processing-status";
+import { Project, Document } from "@/lib/db/types";
+import { User } from "firebase/auth";
 
 interface ProjectData {
   project: Project;
@@ -50,20 +65,24 @@ interface ProjectData {
   };
 }
 
-export default function ProjectDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default function ProjectDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = use(params);
   const router = useRouter();
   const { user, loading, isInitialized } = useAuthStore();
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('sources');
+  const [activeTab, setActiveTab] = useState("sources");
   const [hasUploadedSources, setHasUploadedSources] = useState(false);
 
   useEffect(() => {
     // Only redirect if auth is fully initialized and confirmed no user
     if (isInitialized && !loading && !user) {
-      router.push('/login');
+      router.push("/login");
       return;
     }
 
@@ -80,19 +99,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       const token = await user?.getIdToken();
       if (!token) {
-        throw new Error('No authentication token');
+        throw new Error("No authentication token");
       }
 
       const response = await fetch(`/api/projects/${id}`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
         if (response.status === 404) {
-          throw new Error('Project not found');
+          throw new Error("Project not found");
         }
         throw new Error(`Failed to fetch project: ${response.statusText}`);
       }
@@ -101,8 +120,10 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       setProjectData(data);
       setHasUploadedSources(data.documents && data.documents.length > 0);
     } catch (error) {
-      console.error('Error fetching project:', error);
-      setError(error instanceof Error ? error.message : 'Failed to load project');
+      console.error("Error fetching project:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to load project"
+      );
     } finally {
       setIsLoading(false);
     }
@@ -114,36 +135,47 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const handleSelectDriveFile = async (fileId: string) => {
     try {
       const token = await user?.getIdToken();
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
 
       // Get Google OAuth token for Drive access
-      const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+      const { getDriveAccessToken } = await import("@/lib/firebase/firebase");
       const googleToken = await getDriveAccessToken();
-      if (!googleToken) throw new Error('No Google Drive access token available');
+      if (!googleToken)
+        throw new Error("No Google Drive access token available");
 
       const response = await fetch(`/api/projects/${id}/documents`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-Google-Token': googleToken,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "X-Google-Token": googleToken,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ driveFileId: fileId }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to link document');
+        throw new Error(errorData.error || "Failed to link document");
       }
+
+      const responseData = await response.json();
 
       // Refresh project data to show new document
       await fetchProjectData();
 
       // Update sources uploaded state
       setHasUploadedSources(true);
+
+      // Show success message with processing status
+      if (responseData.processing_triggered) {
+        console.log("Document processing started in background");
+        // You could add a toast notification here
+      }
     } catch (error) {
-      console.error('Error linking document:', error);
-      setError(error instanceof Error ? error.message : 'Failed to link document');
+      console.error("Error linking document:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to link document"
+      );
     }
   };
 
@@ -153,18 +185,18 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       setError(null);
 
       const token = await user?.getIdToken();
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
 
       const response = await fetch(`/api/projects/${id}/sync`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to sync documents');
+        throw new Error("Failed to sync documents");
       }
 
       const syncResult = await response.json();
@@ -175,11 +207,15 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       // Show success message if changes were found
       if (syncResult.changedDocuments > 0) {
         // In a real app, you'd show a toast notification here
-        console.log(`Sync completed: ${syncResult.changedDocuments} documents updated`);
+        console.log(
+          `Sync completed: ${syncResult.changedDocuments} documents updated`
+        );
       }
     } catch (error) {
-      console.error('Error syncing documents:', error);
-      setError(error instanceof Error ? error.message : 'Failed to sync documents');
+      console.error("Error syncing documents:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to sync documents"
+      );
     } finally {
       setIsSyncing(false);
     }
@@ -191,19 +227,19 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       setError(null);
 
       const token = await user?.getIdToken();
-      if (!token) throw new Error('No authentication token');
+      if (!token) throw new Error("No authentication token");
 
       const response = await fetch(`/api/projects/${id}/analyze`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to analyze project');
+        throw new Error(errorData.error || "Failed to analyze project");
       }
 
       const analysisResult = await response.json();
@@ -212,10 +248,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       await fetchProjectData();
 
       // In a real app, you'd show detailed analysis results in a modal or new page
-      console.log('Analysis completed:', analysisResult);
+      console.log("Analysis completed:", analysisResult);
     } catch (error) {
-      console.error('Error analyzing project:', error);
-      setError(error instanceof Error ? error.message : 'Failed to analyze project');
+      console.error("Error analyzing project:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to analyze project"
+      );
     } finally {
       setIsAnalyzing(false);
     }
@@ -223,13 +261,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   const getStatusBadgeVariant = (status: string) => {
     switch (status) {
-      case 'completed':
-        return 'default';
-      case 'analyzing':
-        return 'secondary';
-      case 'draft':
+      case "completed":
+        return "default";
+      case "analyzing":
+        return "secondary";
+      case "draft":
       default:
-        return 'outline';
+        return "outline";
     }
   };
 
@@ -270,7 +308,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
           <p className="text-gray-600 mb-4">{error}</p>
           <div className="flex gap-3 justify-center">
-            <Button onClick={() => router.push('/projects')}>
+            <Button onClick={() => router.push("/projects")}>
               Back to Projects
             </Button>
             <Button onClick={fetchProjectData} variant="outline">
@@ -288,6 +326,43 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
   const { project, documents, compliance, stats } = projectData;
 
+  // Wrapper component to handle async token retrieval
+  const ProcessingStatusWrapper = ({
+    projectId,
+    user,
+  }: {
+    projectId: string;
+    user: User;
+  }) => {
+    const [authToken, setAuthToken] = useState<string | null>(null);
+
+    useEffect(() => {
+      const getToken = async () => {
+        try {
+          const token = await user.getIdToken();
+          setAuthToken(token);
+        } catch (error) {
+          console.error("Failed to get auth token:", error);
+        }
+      };
+      getToken();
+    }, [user]);
+
+    if (!authToken) {
+      return (
+        <Card>
+          <CardContent className="p-6">
+            <div className="text-center text-gray-500">
+              <p className="text-sm">Loading processing status...</p>
+            </div>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return <ProcessingStatus projectId={projectId} authToken={authToken} />;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Navbar */}
@@ -303,7 +378,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             </Badge>
           </div>
           <p className="text-gray-600">
-            {project.description || 'No description provided'}
+            {project.description || "No description provided"}
           </p>
         </div>
 
@@ -341,8 +416,12 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               projectId={id}
               onFolderSelected={handleSelectDriveFile}
               hasUploadedSources={hasUploadedSources}
-              selectedFiles={documents.map(doc => doc.drive_file_id)}
-              selectedFolders={Array.from(new Set(documents.map(doc => doc.parent_folder_id).filter(Boolean)))}
+              selectedFiles={documents.map((doc) => doc.drive_file_id)}
+              selectedFolders={Array.from(
+                new Set(
+                  documents.map((doc) => doc.parent_folder_id).filter(Boolean)
+                )
+              )}
               disabled={isAnalyzing}
             />
           </TabsContent>
@@ -358,9 +437,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           </TabsContent>
         </Tabs>
 
+        {/* Processing Status */}
+        {user && (
+          <div className="mt-12">
+            <ProcessingStatusWrapper projectId={id} user={user} />
+          </div>
+        )}
+
         {/* Sources Menu Placeholder */}
         {hasUploadedSources && (
-          <div className="mt-12">
+          <div className="mt-8">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Sources Menu</CardTitle>
@@ -370,10 +456,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
               </CardHeader>
               <CardContent>
                 <div className="text-gray-500 text-center py-4">
-                  <p className="text-sm">Connected sources will be displayed here</p>
+                  <p className="text-sm">
+                    Connected sources will be displayed here
+                  </p>
                   {documents.length > 0 && (
                     <p className="text-xs mt-1">
-                      {documents.length} document{documents.length !== 1 ? 's' : ''} currently linked
+                      {documents.length} document
+                      {documents.length !== 1 ? "s" : ""} currently linked
                     </p>
                   )}
                 </div>

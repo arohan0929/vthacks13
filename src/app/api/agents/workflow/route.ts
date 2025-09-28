@@ -1,10 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from "next/server";
 import {
   initializeAgentSystem,
   createProjectAgentTeam,
-  getAgentRegistry
-} from '@/lib/agents';
-import { getWorkflowOrchestrator } from '@/lib/agents/orchestrator';
+  getAgentRegistry,
+} from "@/lib/agents";
+import { getWorkflowOrchestrator } from "@/lib/agents/orchestrator";
 
 // Initialize the agent system on first load
 let systemInitialized = false;
@@ -22,17 +22,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      workflowId = 'full_compliance_analysis',
+      workflowId = "full_compliance_analysis",
       projectId,
       projectDescription,
-      documentContent = '',
+      documentContent = "",
       context = {},
-      analysisDepth = 'thorough'
+      analysisDepth = "thorough",
     } = body;
 
     if (!projectId || !projectDescription) {
       return NextResponse.json(
-        { error: 'Project ID and description are required' },
+        { error: "Project ID and description are required" },
         { status: 400 }
       );
     }
@@ -48,9 +48,9 @@ export async function POST(request: NextRequest) {
         console.log(`Created agent team for project ${projectId}`);
       }
     } catch (error) {
-      console.error('Error ensuring agent team:', error);
+      console.error("Error ensuring agent team:", error);
       return NextResponse.json(
-        { error: 'Failed to initialize agent team' },
+        { error: "Failed to initialize agent team" },
         { status: 500 }
       );
     }
@@ -58,16 +58,16 @@ export async function POST(request: NextRequest) {
     // Create workflow context
     const workflowContext = {
       projectId,
-      userId: 'user-1', // Would come from auth in production
+      userId: "user-1", // Would come from auth in production
       sessionId: `workflow-session-${Date.now()}`,
       conversationHistory: [],
       sharedState: {
         projectDescription,
         documentContent,
         analysisDepth,
-        ...context
+        ...context,
       },
-      preferences: {}
+      preferences: {},
     };
 
     // Prepare initial input for the workflow
@@ -76,22 +76,22 @@ export async function POST(request: NextRequest) {
       documentContent,
       analysisDepth,
       projectContext: {
-        type: context.projectType || 'academic',
-        size: context.projectSize || 'medium',
-        budget: context.budget || 'moderate',
-        timeline: context.timeline || 'normal',
+        type: context.projectType || "academic",
+        size: context.projectSize || "medium",
+        budget: context.budget || "moderate",
+        timeline: context.timeline || "normal",
         resources: {
-          technical: context.technicalResources || 'medium',
-          legal: context.legalResources || 'medium',
-          administrative: context.administrativeResources || 'medium'
-        }
+          technical: context.technicalResources || "medium",
+          legal: context.legalResources || "medium",
+          administrative: context.administrativeResources || "medium",
+        },
       },
       preferences: context.preferences || {
         prioritizeQuickWins: true,
         focusOnCritical: true,
         includeTraining: true,
-        includeAutomation: false
-      }
+        includeAutomation: false,
+      },
     };
 
     try {
@@ -116,27 +116,28 @@ export async function POST(request: NextRequest) {
           timestamp: new Date().toISOString(),
           totalExecutionTime: workflowResult.summary.totalTime,
           stepsExecuted: workflowResult.summary.stepsExecuted,
-          successRate: workflowResult.summary.successRate
-        }
+          successRate: workflowResult.summary.successRate,
+        },
       });
-
     } catch (workflowError) {
-      console.error('Workflow execution error:', workflowError);
+      console.error("Workflow execution error:", workflowError);
       return NextResponse.json(
         {
-          error: 'Workflow execution failed',
-          details: workflowError instanceof Error ? workflowError.message : 'Unknown error'
+          error: "Workflow execution failed",
+          details:
+            workflowError instanceof Error
+              ? workflowError.message
+              : "Unknown error",
         },
         { status: 500 }
       );
     }
-
   } catch (error) {
-    console.error('Workflow endpoint error:', error);
+    console.error("Workflow endpoint error:", error);
     return NextResponse.json(
       {
-        error: 'Workflow request failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Workflow request failed",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
@@ -148,8 +149,8 @@ export async function GET(request: NextRequest) {
     await ensureSystemInitialized();
 
     const { searchParams } = new URL(request.url);
-    const executionId = searchParams.get('executionId');
-    const listWorkflows = searchParams.get('list') === 'true';
+    const executionId = searchParams.get("executionId");
+    const listWorkflows = searchParams.get("list") === "true";
 
     const orchestrator = getWorkflowOrchestrator();
 
@@ -159,15 +160,15 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        workflows: workflows.map(workflow => ({
+        workflows: workflows.map((workflow) => ({
           id: workflow.id,
           name: workflow.name,
           description: workflow.description,
           executionMode: workflow.executionMode,
           stepCount: workflow.steps.length,
           estimatedDuration: estimateWorkflowDuration(workflow),
-          errorHandling: workflow.errorHandling
-        }))
+          errorHandling: workflow.errorHandling,
+        })),
       });
     }
 
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
 
       if (!execution) {
         return NextResponse.json(
-          { error: 'Execution not found' },
+          { error: "Execution not found" },
           { status: 404 }
         );
       }
@@ -196,10 +197,40 @@ export async function GET(request: NextRequest) {
           stepErrors: Object.fromEntries(
             Array.from(execution.stepErrors.entries()).map(([key, errors]) => [
               key,
-              errors.map(error => error.message)
+              errors.map((error) => error.message),
             ])
-          )
-        }
+          ),
+        },
+      });
+    }
+
+    // Get monitoring data
+    const getMetrics = searchParams.get("metrics") === "true";
+    const getStatuses = searchParams.get("statuses") === "true";
+    const getHistory = searchParams.get("history") === "true";
+
+    if (getMetrics) {
+      const metrics = orchestrator.getMetrics();
+      return NextResponse.json({
+        success: true,
+        metrics,
+      });
+    }
+
+    if (getStatuses) {
+      const statuses = orchestrator.getExecutionStatuses();
+      return NextResponse.json({
+        success: true,
+        executions: statuses,
+      });
+    }
+
+    if (getHistory) {
+      const limit = parseInt(searchParams.get("limit") || "50");
+      const history = orchestrator.getExecutionHistory(limit);
+      return NextResponse.json({
+        success: true,
+        history,
       });
     }
 
@@ -208,24 +239,23 @@ export async function GET(request: NextRequest) {
       success: true,
       system: {
         initialized: systemInitialized,
-        availableWorkflows: orchestrator.listWorkflows().length
+        availableWorkflows: orchestrator.listWorkflows().length,
       },
       features: {
-        sequentialExecution: 'Execute agents in defined order',
-        parallelExecution: 'Execute independent agents simultaneously',
-        hybridExecution: 'Combination of sequential and parallel execution',
-        errorRecovery: 'Automatic retry and error handling',
-        progressTracking: 'Real-time execution monitoring'
+        sequentialExecution: "Execute agents in defined order",
+        parallelExecution: "Execute independent agents simultaneously",
+        hybridExecution: "Combination of sequential and parallel execution",
+        errorRecovery: "Automatic retry and error handling",
+        progressTracking: "Real-time execution monitoring",
       },
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
-
   } catch (error) {
-    console.error('Workflow status endpoint error:', error);
+    console.error("Workflow status endpoint error:", error);
     return NextResponse.json(
       {
-        error: 'Failed to get workflow status',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Failed to get workflow status",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
@@ -237,11 +267,11 @@ export async function DELETE(request: NextRequest) {
     await ensureSystemInitialized();
 
     const { searchParams } = new URL(request.url);
-    const executionId = searchParams.get('executionId');
+    const executionId = searchParams.get("executionId");
 
     if (!executionId) {
       return NextResponse.json(
-        { error: 'Execution ID is required' },
+        { error: "Execution ID is required" },
         { status: 400 }
       );
     }
@@ -253,26 +283,90 @@ export async function DELETE(request: NextRequest) {
 
       return NextResponse.json({
         success: true,
-        message: 'Workflow execution cancelled',
-        executionId
+        message: "Workflow execution cancelled",
+        executionId,
       });
-
     } catch (cancelError) {
       return NextResponse.json(
         {
-          error: 'Failed to cancel workflow',
-          details: cancelError instanceof Error ? cancelError.message : 'Unknown error'
+          error: "Failed to cancel workflow",
+          details:
+            cancelError instanceof Error
+              ? cancelError.message
+              : "Unknown error",
         },
         { status: 500 }
       );
     }
-
   } catch (error) {
-    console.error('Workflow cancellation endpoint error:', error);
+    console.error("Workflow cancellation endpoint error:", error);
     return NextResponse.json(
       {
-        error: 'Workflow cancellation request failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: "Workflow cancellation request failed",
+        details: error instanceof Error ? error.message : "Unknown error",
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    await ensureSystemInitialized();
+
+    const { searchParams } = new URL(request.url);
+    const executionId = searchParams.get("executionId");
+
+    if (!executionId) {
+      return NextResponse.json(
+        { error: "Execution ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { action, options = {} } = body;
+
+    const orchestrator = getWorkflowOrchestrator();
+
+    try {
+      let result;
+
+      switch (action) {
+        case "recover":
+          result = await orchestrator.recoverWorkflow(executionId, options);
+          break;
+        default:
+          return NextResponse.json(
+            { error: `Unknown action: ${action}` },
+            { status: 400 }
+          );
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: `Workflow ${action} completed`,
+        executionId,
+        result,
+      });
+    } catch (actionError) {
+      return NextResponse.json(
+        {
+          error: `Failed to ${action} workflow`,
+          details:
+            actionError instanceof Error
+              ? actionError.message
+              : "Unknown error",
+        },
+        { status: 500 }
+      );
+    }
+  } catch (error) {
+    console.error("Workflow action endpoint error:", error);
+    return NextResponse.json(
+      {
+        error: "Workflow action request failed",
+        details: error instanceof Error ? error.message : "Unknown error",
       },
       { status: 500 }
     );
@@ -281,13 +375,16 @@ export async function DELETE(request: NextRequest) {
 
 // Helper function to estimate workflow duration
 function estimateWorkflowDuration(workflow: any): string {
-  const totalTimeout = workflow.steps.reduce((sum: number, step: any) => sum + step.timeout, 0);
+  const totalTimeout = workflow.steps.reduce(
+    (sum: number, step: any) => sum + step.timeout,
+    0
+  );
   const minutes = Math.ceil(totalTimeout / 60000);
 
-  if (minutes < 1) return '< 1 minute';
-  if (minutes === 1) return '1 minute';
+  if (minutes < 1) return "< 1 minute";
+  if (minutes === 1) return "1 minute";
   if (minutes < 60) return `${minutes} minutes`;
 
   const hours = Math.ceil(minutes / 60);
-  return `${hours} hour${hours > 1 ? 's' : ''}`;
+  return `${hours} hour${hours > 1 ? "s" : ""}`;
 }

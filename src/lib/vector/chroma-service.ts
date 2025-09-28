@@ -1,13 +1,13 @@
-import { ChromaClient, Collection } from 'chromadb';
-import { DocumentChunk } from '../processing/semantic-chunker';
+import { ChromaClient, Collection } from "chromadb";
+import { DocumentChunk } from "../processing/semantic-chunker";
 import {
   ChromaConfig,
   DEFAULT_CHROMA_CONFIG,
   COLLECTION_SETTINGS,
   getCollectionName,
-  validateProjectId
-} from './chroma-config';
-import { sql } from '../db/neon-client';
+  validateProjectId,
+} from "./chroma-config";
+import { sql } from "../db/neon-client";
 
 export interface ChunkMetadata {
   chunk_id: string;
@@ -29,7 +29,7 @@ export interface QueryOptions {
   n_results?: number;
   where?: Record<string, any>;
   where_document?: Record<string, any>;
-  include?: ('metadatas' | 'documents' | 'distances' | 'embeddings')[];
+  include?: ("metadatas" | "documents" | "distances" | "embeddings")[];
 }
 
 export interface QueryResult {
@@ -48,8 +48,8 @@ export interface CollectionInfo {
 
 export class ChromaVectorService {
   private client: ChromaClient | null = null;
-  private collections: Map<string, Collection> = new Map();
-  private config: ChromaConfig;
+  private readonly collections: Map<string, Collection> = new Map();
+  private readonly config: ChromaConfig;
   private initialized = false;
 
   constructor(config: Partial<ChromaConfig> = {}) {
@@ -66,25 +66,50 @@ export class ChromaVectorService {
       // Try in-memory mode first for development/testing
       try {
         this.client = new ChromaClient();
+        // Test the connection with a simple operation
+        await this.client.heartbeat();
         this.initialized = true;
-        console.log('ChromaDB initialized in in-memory mode');
+        console.log("ChromaDB initialized in in-memory mode");
         return;
       } catch (memoryError) {
-        console.log('In-memory mode failed, trying server mode...');
+        console.log(
+          "In-memory mode failed, trying server mode...",
+          memoryError
+        );
+        this.client = null;
       }
 
       // Fallback to server mode
-      this.client = new ChromaClient({
-        host: this.config.host || 'localhost',
-        port: this.config.port || 8000,
-        ssl: this.config.ssl || false,
-        headers: this.config.headers || {}
-      });
+      try {
+        this.client = new ChromaClient({
+          host: this.config.host || "localhost",
+          port: this.config.port || 8000,
+          ssl: this.config.ssl || false,
+          headers: this.config.headers || {},
+        });
 
-      this.initialized = true;
-      console.log(`ChromaDB initialized with host: ${this.config.host || 'localhost'}:${this.config.port || 8000}`);
+        // Test the connection with a simple operation
+        await this.client.heartbeat();
+        this.initialized = true;
+        console.log(
+          `ChromaDB initialized with host: ${this.config.host || "localhost"}:${
+            this.config.port || 8000
+          }`
+        );
+        return;
+      } catch (serverError) {
+        console.log("Server mode failed:", serverError);
+        this.client = null;
+      }
+
+      // If both modes fail, throw an error
+      throw new Error(
+        "Both in-memory and server modes failed to initialize ChromaDB"
+      );
     } catch (error) {
-      console.error('Failed to initialize ChromaDB:', error);
+      console.error("Failed to initialize ChromaDB:", error);
+      this.client = null;
+      this.initialized = false;
       throw new Error(`ChromaDB initialization failed: ${error}`);
     }
   }
@@ -109,7 +134,7 @@ export class ChromaVectorService {
     try {
       // Try to get existing collection
       const collection = await this.client!.getCollection({
-        name: collectionName
+        name: collectionName,
       });
 
       this.collections.set(collectionName, collection);
@@ -124,9 +149,12 @@ export class ChromaVectorService {
   /**
    * Create a new collection for a project
    */
-  private async createCollection(projectId: string, collectionName: string): Promise<Collection> {
+  private async createCollection(
+    projectId: string,
+    collectionName: string
+  ): Promise<Collection> {
     if (!this.client) {
-      throw new Error('ChromaDB client not initialized');
+      throw new Error("ChromaDB client not initialized");
     }
 
     try {
@@ -135,10 +163,11 @@ export class ChromaVectorService {
         embeddingFunction: null, // We provide our own embeddings from Gemini
         metadata: {
           project_id: projectId,
-          embedding_function: this.config.collection_metadata.embedding_function,
+          embedding_function:
+            this.config.collection_metadata.embedding_function,
           hnsw_space: this.config.collection_metadata.hnsw_space,
-          created_at: new Date().toISOString()
-        }
+          created_at: new Date().toISOString(),
+        },
       });
 
       // Track collection in database
@@ -155,7 +184,10 @@ export class ChromaVectorService {
   /**
    * Track collection in Neon database
    */
-  private async trackCollectionInDB(projectId: string, collectionName: string): Promise<void> {
+  private async trackCollectionInDB(
+    projectId: string,
+    collectionName: string
+  ): Promise<void> {
     try {
       await sql`
         INSERT INTO vector_collections (project_id, collection_name, chunk_count, last_updated)
@@ -166,7 +198,7 @@ export class ChromaVectorService {
           last_updated = CURRENT_TIMESTAMP
       `;
     } catch (error) {
-      console.error('Failed to track collection in database:', error);
+      console.error("Failed to track collection in database:", error);
       // Don't throw here as ChromaDB collection was created successfully
     }
   }
@@ -180,7 +212,7 @@ export class ChromaVectorService {
     embeddings: number[][]
   ): Promise<void> {
     if (chunks.length !== embeddings.length) {
-      throw new Error('Number of chunks must match number of embeddings');
+      throw new Error("Number of chunks must match number of embeddings");
     }
 
     const collection = await this.getOrCreateCollection(projectId);
@@ -206,21 +238,21 @@ export class ChromaVectorService {
     chunks: DocumentChunk[],
     embeddings: number[][]
   ): Promise<void> {
-    const ids = chunks.map(chunk => chunk.id);
-    const documents = chunks.map(chunk => chunk.content);
-    const metadatas = chunks.map(chunk => this.chunkToMetadata(chunk));
+    const ids = chunks.map((chunk) => chunk.id);
+    const documents = chunks.map((chunk) => chunk.content);
+    const metadatas = chunks.map((chunk) => this.chunkToMetadata(chunk));
 
     try {
       await collection.add({
         ids,
         documents,
         embeddings,
-        metadatas
+        metadatas,
       });
 
       console.log(`Added ${chunks.length} chunks to collection`);
     } catch (error) {
-      console.error('Failed to add chunk batch:', error);
+      console.error("Failed to add chunk batch:", error);
       throw new Error(`Batch insertion failed: ${error}`);
     }
   }
@@ -236,13 +268,13 @@ export class ChromaVectorService {
       hierarchy_level: chunk.hierarchy_level,
       position: chunk.position,
       tokens: chunk.tokens,
-      heading_path: chunk.heading_path.join(' > '),
-      topic_keywords: chunk.topic_keywords.join(', '),
+      heading_path: chunk.heading_path.join(" > "),
+      topic_keywords: chunk.topic_keywords.join(", "),
       semantic_density: chunk.semantic_density,
       chunking_method: chunk.metadata.chunking_method,
       created_at: chunk.metadata.created_at.toISOString(),
       source_file_id: chunk.metadata.source_file_id,
-      source_file_name: chunk.metadata.source_file_name
+      source_file_name: chunk.metadata.source_file_name,
     };
   }
 
@@ -258,7 +290,7 @@ export class ChromaVectorService {
 
     const defaultOptions: QueryOptions = {
       n_results: 10,
-      include: ['metadatas', 'documents', 'distances']
+      include: ["metadatas", "documents", "distances"],
     };
 
     const finalOptions = { ...defaultOptions, ...options };
@@ -269,7 +301,7 @@ export class ChromaVectorService {
         nResults: finalOptions.n_results,
         where: finalOptions.where,
         whereDocument: finalOptions.where_document,
-        include: finalOptions.include
+        include: finalOptions.include,
       });
 
       return {
@@ -277,10 +309,10 @@ export class ChromaVectorService {
         documents: results.documents?.[0] || [],
         metadatas: (results.metadatas?.[0] || []) as ChunkMetadata[],
         distances: results.distances?.[0] || [],
-        embeddings: results.embeddings?.[0] || undefined
+        embeddings: results.embeddings?.[0] || undefined,
       };
     } catch (error) {
-      console.error('Query failed:', error);
+      console.error("Query failed:", error);
       throw new Error(`Semantic query failed: ${error}`);
     }
   }
@@ -288,11 +320,14 @@ export class ChromaVectorService {
   /**
    * Get chunks by document ID
    */
-  async getChunksByDocument(projectId: string, documentId: string): Promise<QueryResult> {
+  async getChunksByDocument(
+    projectId: string,
+    documentId: string
+  ): Promise<QueryResult> {
     return this.queryBySemanticSimilarity(projectId, [], {
       n_results: 1000, // Large number to get all chunks
       where: { document_id: documentId },
-      include: ['metadatas', 'documents']
+      include: ["metadatas", "documents"],
     });
   }
 
@@ -307,7 +342,7 @@ export class ChromaVectorService {
     return this.queryBySemanticSimilarity(projectId, [], {
       ...options,
       where: { hierarchy_level: level },
-      include: ['metadatas', 'documents']
+      include: ["metadatas", "documents"],
     });
   }
 
@@ -322,7 +357,7 @@ export class ChromaVectorService {
     return this.queryBySemanticSimilarity(projectId, [], {
       ...options,
       where_document: { $contains: headingPath },
-      include: ['metadatas', 'documents']
+      include: ["metadatas", "documents"],
     });
   }
 
@@ -334,17 +369,17 @@ export class ChromaVectorService {
 
     try {
       const results = await collection.get({
-        include: ['metadatas', 'documents']
+        include: ["metadatas", "documents"],
       });
 
       return {
         ids: results.ids,
         documents: results.documents || [],
         metadatas: (results.metadatas || []) as ChunkMetadata[],
-        distances: []
+        distances: [],
       };
     } catch (error) {
-      console.error('Failed to get all chunks:', error);
+      console.error("Failed to get all chunks:", error);
       throw new Error(`Get all chunks failed: ${error}`);
     }
   }
@@ -352,17 +387,20 @@ export class ChromaVectorService {
   /**
    * Delete chunks by document ID
    */
-  async deleteChunksByDocument(projectId: string, documentId: string): Promise<void> {
+  async deleteChunksByDocument(
+    projectId: string,
+    documentId: string
+  ): Promise<void> {
     const collection = await this.getOrCreateCollection(projectId);
 
     try {
       await collection.delete({
-        where: { document_id: documentId }
+        where: { document_id: documentId },
       });
 
       console.log(`Deleted chunks for document ${documentId}`);
     } catch (error) {
-      console.error('Failed to delete chunks:', error);
+      console.error("Failed to delete chunks:", error);
       throw new Error(`Chunk deletion failed: ${error}`);
     }
   }
@@ -394,7 +432,7 @@ export class ChromaVectorService {
 
       console.log(`Deleted collection for project ${projectId}`);
     } catch (error) {
-      console.error('Failed to delete collection:', error);
+      console.error("Failed to delete collection:", error);
       throw new Error(`Collection deletion failed: ${error}`);
     }
   }
@@ -413,11 +451,12 @@ export class ChromaVectorService {
         count,
         metadata: {
           project_id: projectId,
-          embedding_function: this.config.collection_metadata.embedding_function
-        }
+          embedding_function:
+            this.config.collection_metadata.embedding_function,
+        },
       };
     } catch (error) {
-      console.error('Failed to get collection info:', error);
+      console.error("Failed to get collection info:", error);
       return null;
     }
   }
@@ -437,13 +476,13 @@ export class ChromaVectorService {
         infos.push({
           name: collection.name,
           count,
-          metadata: collection.metadata || {}
+          metadata: collection.metadata || {},
         });
       }
 
       return infos;
     } catch (error) {
-      console.error('Failed to list collections:', error);
+      console.error("Failed to list collections:", error);
       return [];
     }
   }
@@ -451,7 +490,10 @@ export class ChromaVectorService {
   /**
    * Update collection count in database
    */
-  private async updateCollectionCount(projectId: string, additionalChunks: number): Promise<void> {
+  private async updateCollectionCount(
+    projectId: string,
+    additionalChunks: number
+  ): Promise<void> {
     try {
       await sql`
         UPDATE vector_collections
@@ -461,7 +503,7 @@ export class ChromaVectorService {
         WHERE project_id = ${projectId}
       `;
     } catch (error) {
-      console.error('Failed to update collection count:', error);
+      console.error("Failed to update collection count:", error);
       // Don't throw as this is not critical for functionality
     }
   }
@@ -471,15 +513,45 @@ export class ChromaVectorService {
    */
   async healthCheck(): Promise<boolean> {
     try {
-      await this.ensureInitialized();
+      // If not initialized, try to initialize
+      if (!this.initialized) {
+        try {
+          await this.initialize();
+        } catch (initError) {
+          console.error(
+            "ChromaDB initialization failed during health check:",
+            initError
+          );
+          return false;
+        }
+      }
 
-      // Try to list collections as a basic health check
-      await this.client!.listCollections();
-      return true;
+      // If still no client, it's unhealthy
+      if (!this.client) {
+        console.error("ChromaDB client is null after initialization");
+        return false;
+      }
+
+      // Try a simple heartbeat operation
+      try {
+        await this.client.heartbeat();
+        return true;
+      } catch (heartbeatError) {
+        console.error("ChromaDB heartbeat failed:", heartbeatError);
+        return false;
+      }
     } catch (error) {
-      console.error('ChromaDB health check failed:', error);
+      console.error("ChromaDB health check failed:", error);
       return false;
     }
+  }
+
+  /**
+   * Force unhealthy state for testing fallback mechanisms
+   */
+  forceUnhealthy(): void {
+    this.client = null;
+    this.initialized = false;
   }
 
   /**
@@ -503,10 +575,37 @@ export class ChromaVectorService {
 
 // Singleton instance for the application
 let chromaServiceInstance: ChromaVectorService | null = null;
+let mockServiceInstance: any = null;
 
 export function getChromaService(): ChromaVectorService {
-  if (!chromaServiceInstance) {
-    chromaServiceInstance = new ChromaVectorService();
-  }
+  chromaServiceInstance ??= new ChromaVectorService();
   return chromaServiceInstance;
+}
+
+/**
+ * Get vector service with automatic fallback to mock service
+ * This ensures the system always has a working vector service
+ */
+export async function getVectorService(): Promise<any> {
+  try {
+    const chromaService = getChromaService();
+    const isHealthy = await chromaService.healthCheck();
+
+    if (isHealthy) {
+      return chromaService;
+    } else {
+      throw new Error("ChromaDB is not healthy");
+    }
+  } catch (error) {
+    console.log("ChromaDB not available, falling back to mock service:", error);
+
+    // Import mock service dynamically to avoid circular dependencies
+    if (!mockServiceInstance) {
+      const { MockVectorService } = await import("./mock-vector-service");
+      mockServiceInstance = new MockVectorService();
+      await mockServiceInstance.initialize();
+    }
+
+    return mockServiceInstance;
+  }
 }

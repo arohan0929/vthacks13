@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   Search,
   Bell,
@@ -13,9 +13,13 @@ import {
   HelpCircle,
   Globe,
   ChevronRight,
-  Home
+  Home,
+  FolderOpen,
+  Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/stores/auth-store/auth-store';
+import { useProjectStore } from '@/stores/project-store/project-store';
 
 interface TopNavProps {
   className?: string;
@@ -28,8 +32,30 @@ interface Breadcrumb {
 
 export function TopNav({ className }: TopNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user } = useAuthStore();
+  const {
+    currentProject,
+    projects,
+    projectsLoading,
+    setCurrentProject,
+    selectProjectById,
+    clearCurrentProject,
+    fetchProjects
+  } = useProjectStore();
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
+
+  // Load projects when component mounts and user is available
+  useEffect(() => {
+    if (user && projects.length === 0) {
+      user.getIdToken().then(token => {
+        fetchProjects(token);
+      });
+    }
+  }, [user, projects.length, fetchProjects]);
 
   const generateBreadcrumbs = (path: string): Breadcrumb[] => {
     const segments = path.split('/').filter(Boolean);
@@ -87,11 +113,27 @@ export function TopNav({ className }: TopNavProps) {
 
   const unreadCount = notifications.filter(n => n.unread).length;
 
+  // Project selection handlers
+  const handleProjectSelect = (projectId: string) => {
+    selectProjectById(projectId);
+    setIsProjectSelectorOpen(false);
+    // Navigate to the project's sources section
+    router.push(`/projects/${projectId}/sources`);
+  };
+
+  const handleClearProject = () => {
+    clearCurrentProject();
+    setIsProjectSelectorOpen(false);
+    // Navigate back to projects list
+    router.push('/projects');
+  };
+
   return (
     <header className={cn("enterprise-topnav", className)}>
       <div className="flex items-center justify-between h-full px-6">
-        {/* Breadcrumbs */}
-        <div className="flex items-center space-x-2">
+        {/* Breadcrumbs and Project Selector */}
+        <div className="flex items-center space-x-4">
+          {/* Breadcrumbs */}
           <nav className="flex items-center space-x-2 text-sm">
             {breadcrumbs.map((crumb, index) => (
               <React.Fragment key={index}>
@@ -117,6 +159,134 @@ export function TopNav({ className }: TopNavProps) {
               </React.Fragment>
             ))}
           </nav>
+
+          {/* Project Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setIsProjectSelectorOpen(!isProjectSelectorOpen)}
+              className="flex items-center space-x-2 px-3 py-2 bg-enterprise-surface-elevated border border-enterprise-border-primary rounded-lg text-enterprise-text-primary hover:bg-enterprise-surface-elevated/80 transition-colors enterprise-focus"
+              aria-label="Select project"
+            >
+              <FolderOpen className="h-4 w-4 text-enterprise-text-tertiary" />
+              <span className="text-sm font-medium max-w-32 md:max-w-48 truncate">
+                {currentProject ? currentProject.name : 'Select Project'}
+              </span>
+              <ChevronDown className={cn(
+                "h-4 w-4 transition-transform duration-200",
+                isProjectSelectorOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Project Selector Dropdown */}
+            {isProjectSelectorOpen && (
+              <div className="absolute left-0 mt-2 w-80 enterprise-glass border border-enterprise-border-primary rounded-lg shadow-lg z-50">
+                <div className="p-3 border-b border-enterprise-border-primary">
+                  <h3 className="text-sm font-semibold text-enterprise-text-primary">
+                    Select Project
+                  </h3>
+                  <p className="text-xs text-enterprise-text-tertiary mt-1">
+                    Choose a project to work with
+                  </p>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto">
+                  {/* No Project Option */}
+                  <button
+                    onClick={handleClearProject}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 text-left hover:bg-enterprise-surface-elevated transition-colors",
+                      !currentProject && "bg-enterprise-surface-elevated"
+                    )}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-8 h-8 rounded-lg bg-enterprise-surface-elevated flex items-center justify-center">
+                        <Home className="h-4 w-4 text-enterprise-text-tertiary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-enterprise-text-primary">
+                          All Projects
+                        </p>
+                        <p className="text-xs text-enterprise-text-tertiary">
+                          View project list
+                        </p>
+                      </div>
+                    </div>
+                    {!currentProject && (
+                      <Check className="h-4 w-4 text-enterprise-primary" />
+                    )}
+                  </button>
+
+                  {/* Loading State */}
+                  {projectsLoading && (
+                    <div className="p-4 text-center">
+                      <div className="text-sm text-enterprise-text-tertiary">Loading projects...</div>
+                    </div>
+                  )}
+
+                  {/* Projects List */}
+                  {!projectsLoading && projects.map((project) => (
+                    <button
+                      key={project.id}
+                      onClick={() => handleProjectSelect(project.id)}
+                      className={cn(
+                        "w-full flex items-center justify-between p-3 text-left hover:bg-enterprise-surface-elevated transition-colors",
+                        currentProject?.id === project.id && "bg-enterprise-surface-elevated"
+                      )}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 rounded-lg bg-enterprise-primary/10 flex items-center justify-center">
+                          <FolderOpen className="h-4 w-4 text-enterprise-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-enterprise-text-primary truncate">
+                            {project.name}
+                          </p>
+                          <p className="text-xs text-enterprise-text-tertiary truncate">
+                            {project.description || 'No description'}
+                          </p>
+                          <div className="flex items-center space-x-2 mt-1">
+                            <span className="text-xs text-enterprise-text-tertiary">
+                              {project.document_count} docs
+                            </span>
+                            <span className="text-enterprise-text-tertiary">•</span>
+                            <span className="text-xs text-enterprise-text-tertiary capitalize">
+                              {project.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      {currentProject?.id === project.id && (
+                        <Check className="h-4 w-4 text-enterprise-primary flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+
+                  {/* Empty State */}
+                  {!projectsLoading && projects.length === 0 && (
+                    <div className="p-4 text-center">
+                      <div className="text-sm text-enterprise-text-tertiary">No projects found</div>
+                      <Link
+                        href="/projects/new"
+                        className="text-xs text-enterprise-primary hover:text-enterprise-primary-hover mt-1 inline-block"
+                      >
+                        Create your first project
+                      </Link>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 border-t border-enterprise-border-primary">
+                  <Link
+                    href="/projects/new"
+                    className="w-full text-sm text-enterprise-primary hover:text-enterprise-primary-hover transition-colors enterprise-focus rounded px-2 py-1 block text-center"
+                    onClick={() => setIsProjectSelectorOpen(false)}
+                  >
+                    + Create New Project
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Center - Search */}
@@ -289,12 +459,13 @@ export function TopNav({ className }: TopNavProps) {
       </div>
 
       {/* Click outside handlers */}
-      {(isNotificationOpen || isUserMenuOpen) && (
+      {(isNotificationOpen || isUserMenuOpen || isProjectSelectorOpen) && (
         <div
           className="fixed inset-0 z-40"
           onClick={() => {
             setIsNotificationOpen(false);
             setIsUserMenuOpen(false);
+            setIsProjectSelectorOpen(false);
           }}
         />
       )}

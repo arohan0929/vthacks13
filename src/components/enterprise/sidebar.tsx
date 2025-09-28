@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store/auth-store';
+import { useProjectStore } from '@/stores/project-store/project-store';
 import {
   LayoutDashboard,
   FolderOpen,
@@ -16,7 +17,10 @@ import {
   ChevronDown,
   Building2,
   Users,
-  FileText
+  FileText,
+  Lightbulb,
+  Folder,
+  ArrowLeft
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +36,8 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const navItems: NavItem[] = [
+// General navigation items (shown when no project is selected)
+const generalNavItems: NavItem[] = [
   {
     title: "Dashboard",
     href: "/dashboard",
@@ -95,11 +100,39 @@ const navItems: NavItem[] = [
   },
 ];
 
+// Project-specific navigation items (shown when a project is selected)
+const getProjectNavItems = (projectId: string): NavItem[] => [
+  {
+    title: "Sources",
+    href: `/projects/${projectId}/sources`,
+    icon: Folder,
+  },
+  {
+    title: "Ideate",
+    href: `/projects/${projectId}/ideate`,
+    icon: Lightbulb,
+  },
+  {
+    title: "Compliance Report",
+    href: `/projects/${projectId}/compliance-report`,
+    icon: Shield,
+  },
+];
+
 export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
   const { user } = useAuthStore();
+  const { currentProject, clearCurrentProject } = useProjectStore();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  // Determine which navigation items to show
+  const navItems = currentProject
+    ? getProjectNavItems(currentProject.id)
+    : generalNavItems;
+
+  // Check if we're in project mode
+  const isProjectMode = currentProject !== null;
 
   const toggleExpanded = (title: string) => {
     const newExpanded = new Set(expandedItems);
@@ -199,23 +232,60 @@ export function Sidebar({ className }: SidebarProps) {
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="flex items-center px-6 py-6 border-b border-enterprise-border-primary">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-enterprise-primary rounded-lg flex items-center justify-center">
-                <Shield className="h-5 w-5 text-enterprise-text-primary" />
+            {isProjectMode ? (
+              <div className="w-full">
+                {/* Project Mode Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => clearCurrentProject()}
+                    className="flex items-center space-x-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg p-1"
+                    title="Back to all projects"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    <span className="text-sm">All Projects</span>
+                  </button>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="w-8 h-8 bg-enterprise-primary/10 rounded-lg flex items-center justify-center">
+                    <FolderOpen className="h-5 w-5 text-enterprise-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h1 className="text-lg font-bold text-enterprise-text-primary truncate">
+                      {currentProject.name}
+                    </h1>
+                    <p className="text-xs text-enterprise-text-tertiary truncate">
+                      {currentProject.description || 'Project workspace'}
+                    </p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <h1 className="text-lg font-bold text-enterprise-text-primary">
-                  Complai
-                </h1>
-                <p className="text-xs text-enterprise-text-tertiary">
-                  Enterprise Edition
-                </p>
+            ) : (
+              <div className="flex items-center space-x-3">
+                {/* General Mode Header */}
+                <div className="w-8 h-8 bg-enterprise-primary rounded-lg flex items-center justify-center">
+                  <Shield className="h-5 w-5 text-enterprise-text-primary" />
+                </div>
+                <div>
+                  <h1 className="text-lg font-bold text-enterprise-text-primary">
+                    Complai
+                  </h1>
+                  <p className="text-xs text-enterprise-text-tertiary">
+                    Enterprise Edition
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           {/* Navigation */}
           <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+            {isProjectMode && (
+              <div className="mb-4">
+                <h3 className="text-xs font-semibold text-enterprise-text-tertiary uppercase tracking-wider px-3 mb-2">
+                  Project Sections
+                </h3>
+              </div>
+            )}
             {navItems.map((item) => (
               <NavItemComponent key={item.href} item={item} />
             ))}

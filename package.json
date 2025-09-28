@@ -37,6 +37,7 @@
     "chromadb": "^3.0.15",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "eventsource": "^4.0.0",
     "firebase": "^12.3.0",
     "googleapis": "^160.0.0",
     "js-tiktoken": "^1.0.21",

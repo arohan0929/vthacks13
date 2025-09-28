@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -11,7 +11,15 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
+import {
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Loader2,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
 
 interface ProcessingJob {
   job_id: string;
@@ -71,6 +79,129 @@ export function ProcessingStatus({
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<
+    "connecting" | "connected" | "disconnected" | "error"
+  >("disconnected");
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
+
+  const connectToSSE = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    setConnectionStatus("connecting");
+    setIsLoading(true);
+    setError(null);
+
+    // Note: EventSource doesn't support custom headers in the browser
+    // We'll need to pass the token as a query parameter for SSE
+    const eventSource = new EventSource(
+      `/api/projects/${projectId}/processing-status/stream?token=${encodeURIComponent(
+        authToken
+      )}`
+    );
+
+    eventSource.onopen = () => {
+      console.log("SSE connection opened");
+      setConnectionStatus("connected");
+      setIsConnected(true);
+      setIsLoading(false);
+      reconnectAttempts.current = 0;
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error parsing SSE message:", error);
+      }
+    };
+
+    eventSource.addEventListener("initial", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data);
+        setIsLoading(false);
+      } catch (error) {
+        console.error("Error parsing initial SSE message:", error);
+      }
+    });
+
+    eventSource.addEventListener("update", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setStatus(data);
+      } catch (error) {
+        console.error("Error parsing update SSE message:", error);
+      }
+    });
+
+    eventSource.addEventListener("heartbeat", (event) => {
+      // Heartbeat received, connection is alive
+      console.log("SSE heartbeat received");
+    });
+
+    eventSource.addEventListener("error", (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.error) {
+          setError(data.error);
+        }
+      } catch (error) {
+        console.error("Error parsing error SSE message:", error);
+      }
+    });
+
+    eventSource.onerror = (error) => {
+      console.error("SSE connection error:", error);
+      setConnectionStatus("error");
+      setIsConnected(false);
+
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        reconnectAttempts.current++;
+        const delay = Math.min(
+          1000 * Math.pow(2, reconnectAttempts.current),
+          30000
+        );
+
+        console.log(
+          `Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts.current}/${maxReconnectAttempts})`
+        );
+
+        reconnectTimeoutRef.current = setTimeout(() => {
+          connectToSSE();
+        }, delay);
+      } else {
+        setError(
+          "Failed to establish real-time connection. Falling back to manual refresh."
+        );
+        setIsLoading(false);
+      }
+    };
+
+    eventSourceRef.current = eventSource;
+  };
+
+  const disconnectSSE = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    setConnectionStatus("disconnected");
+    setIsConnected(false);
+  };
 
   const fetchStatus = async () => {
     try {
@@ -106,17 +237,27 @@ export function ProcessingStatus({
   };
 
   useEffect(() => {
-    fetchStatus();
+    // Try to connect to SSE first
+    connectToSSE();
 
-    // Poll for updates every 5 seconds if there are active jobs
-    const interval = setInterval(() => {
-      if (status?.processing_status.is_processing) {
-        fetchStatus();
-      }
-    }, 5000);
+    // Cleanup on unmount
+    return () => {
+      disconnectSSE();
+    };
+  }, [projectId, authToken]);
 
-    return () => clearInterval(interval);
-  }, [projectId, authToken, status?.processing_status.is_processing]);
+  // Fallback to polling if SSE fails
+  useEffect(() => {
+    if (connectionStatus === "error" && !isConnected) {
+      const interval = setInterval(() => {
+        if (status?.processing_status.is_processing) {
+          fetchStatus();
+        }
+      }, 5000);
+
+      return () => clearInterval(interval);
+    }
+  }, [connectionStatus, isConnected, status?.processing_status.is_processing]);
 
   const getStatusIcon = (jobStatus: string) => {
     switch (jobStatus) {
@@ -200,14 +341,61 @@ export function ProcessingStatus({
               {status.processing_status.is_processing && (
                 <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
               )}
+              {/* Connection status indicator */}
+              <div className="flex items-center gap-1 ml-2">
+                {connectionStatus === "connected" && (
+                  <Wifi
+                    className="h-4 w-4 text-green-600"
+                    title="Real-time connection active"
+                  />
+                )}
+                {connectionStatus === "connecting" && (
+                  <Loader2
+                    className="h-4 w-4 animate-spin text-yellow-600"
+                    title="Connecting..."
+                  />
+                )}
+                {connectionStatus === "error" && (
+                  <WifiOff
+                    className="h-4 w-4 text-red-600"
+                    title="Connection failed, using fallback"
+                  />
+                )}
+                {connectionStatus === "disconnected" && (
+                  <WifiOff
+                    className="h-4 w-4 text-gray-400"
+                    title="Disconnected"
+                  />
+                )}
+              </div>
             </CardTitle>
             <CardDescription>
               Document processing and embedding status
+              {isConnected && (
+                <span className="text-green-600 ml-2">• Live updates</span>
+              )}
             </CardDescription>
           </div>
-          <Button onClick={fetchStatus} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+          <div className="flex gap-2">
+            {!isConnected && (
+              <Button
+                onClick={connectToSSE}
+                variant="outline"
+                size="sm"
+                title="Reconnect to live updates"
+              >
+                <Wifi className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              onClick={fetchStatus}
+              variant="outline"
+              size="sm"
+              title="Manual refresh"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">

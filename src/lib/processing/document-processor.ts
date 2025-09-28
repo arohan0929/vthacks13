@@ -67,6 +67,7 @@ export class DocumentProcessor {
   private chromaService = getChromaService();
   private semanticChunker = new SemanticChunker();
   private activeJobs = new Map<string, ProcessingStatus>();
+  private eventEmitter = new (require("events").EventEmitter)();
 
   /**
    * Process a single document through the complete pipeline
@@ -478,6 +479,9 @@ export class DocumentProcessor {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${jobId}
       `;
+
+      // Emit real-time update event
+      this.emitProgressUpdate(jobId, status);
     } catch (error) {
       console.error("Failed to update job progress:", error);
     }
@@ -523,8 +527,27 @@ export class DocumentProcessor {
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ${jobId}
       `;
+
+      // Emit real-time update event
+      this.emitProgressUpdate(jobId, jobStatus);
     } catch (error) {
       console.error("Failed to update job status:", error);
+    }
+  }
+
+  /**
+   * Emit progress update event
+   */
+  private emitProgressUpdate(
+    jobId: string,
+    status: ProcessingStatus | undefined
+  ): void {
+    if (status) {
+      this.eventEmitter.emit("progressUpdate", {
+        jobId,
+        projectId: status.project_id,
+        status,
+      });
     }
   }
 
@@ -717,6 +740,13 @@ export class DocumentProcessor {
         chunking_method: row.chunking_method || "hybrid",
       },
     };
+  }
+
+  /**
+   * Get event emitter for real-time updates
+   */
+  getEventEmitter() {
+    return this.eventEmitter;
   }
 }
 

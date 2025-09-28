@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store/auth-store';
 import { useProjectStore } from '@/stores/project-store/project-store';
@@ -260,19 +261,15 @@ export function Sidebar({ className }: SidebarProps) {
                 </div>
               </div>
             ) : (
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center justify-center">
                 {/* General Mode Header */}
-                <div className="w-8 h-8 bg-enterprise-primary rounded-lg flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-enterprise-text-primary" />
-                </div>
-                <div>
-                  <h1 className="text-lg font-bold text-enterprise-text-primary">
-                    Complai
-                  </h1>
-                  <p className="text-xs text-enterprise-text-tertiary">
-                    Enterprise Edition
-                  </p>
-                </div>
+                <Image
+                  src="/complai.svg"
+                  alt="Complai"
+                  width={120}
+                  height={48}
+                  className="h-12 w-auto"
+                />
               </div>
             )}
           </div>

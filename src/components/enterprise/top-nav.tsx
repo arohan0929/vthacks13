@@ -44,6 +44,22 @@ export function TopNav({ className }: TopNavProps) {
     fetchProjects
   } = useProjectStore();
 
+  // Helper function to generate initials from user name
+  const getInitials = (name: string | null | undefined): string => {
+    if (!name) return 'U';
+    return name
+      .split(' ')
+      .map(word => word.charAt(0))
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
+  };
+
+  // Get user display info with fallbacks
+  const userName = user?.displayName || 'User';
+  const userEmail = user?.email || 'user@company.com';
+  const userInitials = getInitials(userName);
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
@@ -384,12 +400,12 @@ export function TopNav({ className }: TopNavProps) {
             >
               <div className="w-8 h-8 rounded-full bg-enterprise-primary flex items-center justify-center">
                 <span className="text-sm font-semibold text-enterprise-text-primary">
-                  JP
+                  {userInitials}
                 </span>
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-enterprise-text-primary">
-                  John Peterson
+                  {userName}
                 </p>
                 <p className="text-xs text-enterprise-text-tertiary">
                   Compliance Manager
@@ -405,15 +421,15 @@ export function TopNav({ className }: TopNavProps) {
                   <div className="flex items-center space-x-3">
                     <div className="w-10 h-10 rounded-full bg-enterprise-primary flex items-center justify-center">
                       <span className="text-sm font-semibold text-enterprise-text-primary">
-                        JP
+                        {userInitials}
                       </span>
                     </div>
                     <div>
                       <p className="text-sm font-medium text-enterprise-text-primary">
-                        John Peterson
+                        {userName}
                       </p>
                       <p className="text-xs text-enterprise-text-tertiary">
-                        john.peterson@company.com
+                        {userEmail}
                       </p>
                       <p className="text-xs text-enterprise-text-tertiary">
                         Compliance Manager

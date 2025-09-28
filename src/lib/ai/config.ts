@@ -1,6 +1,6 @@
 export const AI_CONFIG = {
   gemini: {
-    model: 'gemini-1.5-pro',
+    model: 'gemini-2.5-flash',
     temperature: 0.1,
     maxTokens: 8192,
     maxRetries: 3,

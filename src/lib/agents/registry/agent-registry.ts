@@ -9,6 +9,7 @@ export interface AgentInstance {
   lastHealthCheck: Date;
   healthStatus: AgentHealth | null;
   createdAt: Date;
+  activeExecutions: number; // Track concurrent executions
   usageStats: {
     totalExecutions: number;
     successfulExecutions: number;
@@ -88,6 +89,7 @@ export class AgentRegistry {
       lastHealthCheck: new Date(),
       healthStatus: null,
       createdAt: new Date(),
+      activeExecutions: 0, // Initialize concurrent execution counter
       usageStats: {
         totalExecutions: 0,
         successfulExecutions: 0,
@@ -188,15 +190,21 @@ export class AgentRegistry {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    if (instance.status !== "ready") {
+    // Allow concurrent executions - the queue will handle serialization if needed
+    // Only block if the agent is explicitly stopped or in an error state
+    if (instance.status === "stopped" || instance.status === "error") {
       throw new Error(
-        `Agent ${agentId} is not ready (status: ${instance.status})`
+        `Agent ${agentId} is not available (status: ${instance.status})`
       );
     }
 
     return this.queue.add(async () => {
       const startTime = Date.now();
-      instance.status = "busy";
+      instance.activeExecutions++;
+      // Only set status to busy if this is the first concurrent execution
+      if (instance.activeExecutions === 1) {
+        instance.status = "busy";
+      }
 
       try {
         // Ensure context is properly structured
@@ -219,13 +227,21 @@ export class AgentRegistry {
 
         // Update usage statistics
         this.updateUsageStats(instance, executionTime, true);
-        instance.status = "ready";
+        instance.activeExecutions--;
+        // Only set status back to ready if no more active executions
+        if (instance.activeExecutions === 0) {
+          instance.status = "ready";
+        }
 
         return result.data;
       } catch (error) {
         const executionTime = Date.now() - startTime;
         this.updateUsageStats(instance, executionTime, false);
-        instance.status = "ready";
+        instance.activeExecutions--;
+        // Only set status back to ready if no more active executions
+        if (instance.activeExecutions === 0) {
+          instance.status = "ready";
+        }
 
         // Enhanced error logging
         console.error(`Agent ${agentId} execution failed:`, {

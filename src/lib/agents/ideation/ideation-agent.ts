@@ -6,6 +6,7 @@ import {
 } from "@langchain/core/prompts";
 import { Tool } from "@langchain/core/tools";
 import { VectorRetrievalTool, WebSearchTool, getAgentTools } from "../tools";
+import { DynamicTool } from "@langchain/core/tools";
 import { z } from "zod";
 
 export interface IdeationInput {
@@ -151,14 +152,70 @@ export class IdeationAgent extends BaseAgent<IdeationInput, IdeationOutput> {
   }
 
   protected async initializeTools(): Promise<Tool[]> {
-    return getAgentTools(this.metadata.id);
+    // Get the project ID from the agent metadata
+    const projectId = this.metadata.tags.find(tag =>
+      tag !== 'ideation' &&
+      tag !== 'questions' &&
+      tag !== 'knowledge' &&
+      tag !== 'interactive'
+    ) || '';
+
+    // Create a project-specific vector retrieval tool
+    const projectVectorTool = new DynamicTool({
+      name: "vector_retrieval",
+      description: "Search through uploaded compliance documents for this project using semantic similarity. Input should be a search query string.",
+      func: async (query: string) => {
+        try {
+          // Create the base vector retrieval tool
+          const vectorTool = new VectorRetrievalTool();
+
+          // Prepare the input with the project ID automatically included
+          const input = JSON.stringify({
+            projectId: projectId,
+            query: query,
+            limit: 10,
+            threshold: 0.5 // Lower threshold to get more results
+          });
+
+          // Call the tool
+          const result = await vectorTool.call(input);
+
+          // If no results found, be explicit about it
+          if (result.includes("No chunks found") || result.includes("No relevant")) {
+            return `No relevant information found in uploaded documents for query: "${query}". The documents may not contain information about this topic.`;
+          }
+
+          return result;
+        } catch (error) {
+          console.error('Vector retrieval error:', error);
+          return `Error searching documents: ${error instanceof Error ? error.message : 'Unknown error'}. Please try a different search query.`;
+        }
+      },
+    });
+
+    // Get other standard tools
+    const standardTools = getAgentTools(this.metadata.id).filter(
+      tool => tool.name !== 'vector_retrieval'
+    );
+
+    // Return project-specific vector tool first, then other tools
+    return [projectVectorTool, ...standardTools];
   }
 
   protected createPrompt(): ChatPromptTemplate {
     return ChatPromptTemplate.fromMessages([
       [
         "system",
-        `You are a compliance ideation specialist with two primary modes:
+        `You are a compliance ideation specialist with access to tools for searching documents and the web.
+
+AVAILABLE TOOLS:
+- vector_retrieval: Search through uploaded compliance documents using semantic search
+  Usage: Call with just a search query string, e.g., "ebay compliance issues" or "data privacy requirements"
+  The tool automatically searches the project's uploaded documents
+- web_search: Search the internet for current information
+- document_analysis: Analyze document structure and content
+
+You operate in two primary modes:
 
 QUESTIONS MODE:
 Generate smart, targeted questions to fill compliance gaps and clarify implementation details.
@@ -177,16 +234,22 @@ Question Guidelines:
 - Prioritize based on risk and compliance impact
 
 CHAT MODE:
-Provide knowledgeable, helpful responses about compliance topics using knowledge retrieval and web search.
+**IMPORTANT**: You MUST follow these steps for EVERY user query:
+1. FIRST, use the vector_retrieval tool by calling it with the user's query or relevant search terms
+   Example: If user asks "what are ebay's compliance issues?", call vector_retrieval with "ebay compliance issues"
+2. If the vector search returns relevant results, base your response primarily on those results
+3. Try multiple searches if needed with different keywords to find relevant information
+4. If needed, supplement with web_search for additional current information
+5. NEVER give generic responses without first searching the uploaded documents
 
 Chat Guidelines:
-- Use vector search to find relevant compliance information
-- Supplement with web search for current requirements
-- Provide practical, actionable advice
-- Include relevant sources and citations
-- Suggest next steps and related topics
+- ALWAYS start by searching uploaded documents using vector_retrieval
+- Only provide information based on actual search results
+- Include specific citations from the documents you found
+- If no relevant information is found, explicitly state that
+- Be clear about what information comes from uploaded docs vs web search
 
-Always tailor responses to the specific project context and detected frameworks.`,
+Remember: Your primary job is to search through the user's uploaded compliance documents and provide answers based on what you find there, not to give generic advice.`,
       ],
       ["human", "{input}"],
       new MessagesPlaceholder("agent_scratchpad"),
@@ -321,15 +384,25 @@ DETECTED FRAMEWORKS: ${context.detectedFrameworks?.join(", ") || "None"}
 USER QUERY: ${context.userQuery || "General compliance guidance"}
 ${conversationContext}
 
-Please provide a helpful, knowledgeable response about compliance topics. Use vector search to find relevant information and web search for current requirements.
+**MANDATORY STEPS TO ANSWER THIS QUERY:**
+1. IMMEDIATELY use the vector_retrieval tool with the query: "${context.userQuery}"
+   (Just pass the search query as a string, the tool will handle the rest)
+2. Analyze the search results to find relevant information
+3. If needed, perform additional searches with related terms like:
+   - Key words from the user's question
+   - Related compliance terms
+   - Framework names mentioned
+4. Only use web_search if you need current regulatory updates not found in the documents
 
-Include:
-1. Direct answer to the user's question
-2. Relevant sources and citations
-3. Practical next steps
-4. Related topics they might want to explore
+**YOUR RESPONSE MUST:**
+- Be based on actual content from the uploaded documents (found via vector_retrieval)
+- Quote specific passages or sections from the documents
+- Clearly indicate which document the information comes from
+- If no relevant information is found in the documents, explicitly state: "I searched the uploaded documents but couldn't find information about [topic]"
 
-Make the response conversational but informative, tailored to their specific project context.`;
+DO NOT give generic advice without searching the documents first.
+DO NOT make up information that isn't in the search results.
+ALWAYS cite your sources from the vector search results.`;
   }
 
   private async processQuestionModeOutput(

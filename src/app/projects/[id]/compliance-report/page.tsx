@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/stores/auth-store/auth-store";
 import { useProjectStore } from "@/stores/project-store/project-store";
 import { EnterpriseLayout } from "@/components/enterprise/layout";
-import { CompliancePlaceholder } from "@/components/dashboard/compliance-placeholder";
+import { ReportDashboard } from "@/components/dashboard/reports/report-dashboard";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, Lock } from "lucide-react";
 import { Project, Document } from "@/lib/db/types";
@@ -191,19 +191,12 @@ export default function ProjectComplianceReportPage({
   return (
     <EnterpriseLayout>
       <div className="space-y-6">
-        {/* Page Header */}
+        {/* Compliance Report Dashboard */}
         <div className="enterprise-fade-in">
-          <h1 className="text-3xl font-bold text-enterprise-text-primary">
-            Compliance Report
-          </h1>
-          <p className="text-enterprise-text-secondary mt-2">
-            Comprehensive compliance analysis for {project.name}
-          </p>
-        </div>
-
-        {/* Compliance Report Component */}
-        <div className="enterprise-fade-in" style={{ animationDelay: '0.1s' }}>
-          <CompliancePlaceholder isLocked={false} />
+          <ReportDashboard
+            projectId={id}
+            isLocked={false}
+          />
         </div>
       </div>
     </EnterpriseLayout>

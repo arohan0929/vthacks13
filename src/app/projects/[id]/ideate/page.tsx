@@ -190,7 +190,15 @@ export default function ProjectIdeatePage({
 
         {/* Ideate Section Component */}
         <div className="enterprise-fade-in" style={{ animationDelay: '0.1s' }}>
-          <IdeateSection isLocked={false} />
+          <IdeateSection
+            isLocked={false}
+            projectId={id}
+            projectContext={{
+              description: project.description || "",
+              detectedFrameworks: projectData.compliance?.frameworks?.map((f: any) => f.name) || [],
+              complianceGaps: [], // Will be populated from gap analysis results
+            }}
+          />
         </div>
       </div>
     </EnterpriseLayout>

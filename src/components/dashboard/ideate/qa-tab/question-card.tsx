@@ -30,12 +30,20 @@ export function QuestionCard({
     onAnswer(question.id, answer);
   };
 
-  const formatTime = (date: Date) => {
+  const formatTime = (date: Date | string) => {
+    // Handle both Date objects and date strings
+    const dateObj = date instanceof Date ? date : new Date(date);
+
+    // Check if the date is valid
+    if (isNaN(dateObj.getTime())) {
+      return 'Invalid date';
+    }
+
     return new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true
-    }).format(date);
+    }).format(dateObj);
   };
 
   return (

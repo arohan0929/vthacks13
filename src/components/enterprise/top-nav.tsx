@@ -1,0 +1,303 @@
+"use client";
+
+import React, { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import {
+  Search,
+  Bell,
+  ChevronDown,
+  Settings,
+  User,
+  LogOut,
+  HelpCircle,
+  Globe,
+  ChevronRight,
+  Home
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+interface TopNavProps {
+  className?: string;
+}
+
+interface Breadcrumb {
+  label: string;
+  href?: string;
+}
+
+export function TopNav({ className }: TopNavProps) {
+  const pathname = usePathname();
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+
+  const generateBreadcrumbs = (path: string): Breadcrumb[] => {
+    const segments = path.split('/').filter(Boolean);
+    const breadcrumbs: Breadcrumb[] = [
+      { label: 'Home', href: '/dashboard' }
+    ];
+
+    let currentPath = '';
+    segments.forEach((segment, index) => {
+      currentPath += `/${segment}`;
+      const isLast = index === segments.length - 1;
+
+      let label = segment.charAt(0).toUpperCase() + segment.slice(1);
+      if (segment === 'projects') label = 'Projects';
+      if (segment === 'dashboard') label = 'Dashboard';
+      if (segment === 'reports') label = 'Reports';
+      if (segment === 'analytics') label = 'Analytics';
+      if (segment === 'organization') label = 'Organization';
+      if (segment === 'settings') label = 'Settings';
+
+      breadcrumbs.push({
+        label,
+        href: isLast ? undefined : currentPath
+      });
+    });
+
+    return breadcrumbs;
+  };
+
+  const breadcrumbs = generateBreadcrumbs(pathname);
+
+  const notifications = [
+    {
+      id: 1,
+      title: "Compliance Report Ready",
+      message: "Q4 2024 compliance report has been generated",
+      time: "2 min ago",
+      unread: true,
+    },
+    {
+      id: 2,
+      title: "Risk Assessment Update",
+      message: "New risk factors identified in Project Alpha",
+      time: "1 hour ago",
+      unread: true,
+    },
+    {
+      id: 3,
+      title: "Team Member Added",
+      message: "Sarah Johnson joined the compliance team",
+      time: "3 hours ago",
+      unread: false,
+    },
+  ];
+
+  const unreadCount = notifications.filter(n => n.unread).length;
+
+  return (
+    <header className={cn("enterprise-topnav", className)}>
+      <div className="flex items-center justify-between h-full px-6">
+        {/* Breadcrumbs */}
+        <div className="flex items-center space-x-2">
+          <nav className="flex items-center space-x-2 text-sm">
+            {breadcrumbs.map((crumb, index) => (
+              <React.Fragment key={index}>
+                {index > 0 && (
+                  <ChevronRight className="h-4 w-4 text-enterprise-text-tertiary" />
+                )}
+                {crumb.href ? (
+                  <Link
+                    href={crumb.href}
+                    className="text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded px-1 py-0.5"
+                  >
+                    {index === 0 ? (
+                      <Home className="h-4 w-4" />
+                    ) : (
+                      crumb.label
+                    )}
+                  </Link>
+                ) : (
+                  <span className="text-enterprise-text-primary font-medium">
+                    {crumb.label}
+                  </span>
+                )}
+              </React.Fragment>
+            ))}
+          </nav>
+        </div>
+
+        {/* Center - Search */}
+        <div className="flex-1 max-w-lg mx-8">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-enterprise-text-tertiary" />
+            <input
+              type="text"
+              placeholder="Search projects, reports, frameworks..."
+              className="w-full pl-10 pr-4 py-2 bg-enterprise-surface-elevated border border-enterprise-border-primary rounded-lg text-enterprise-text-primary placeholder-enterprise-text-tertiary focus:outline-none focus:ring-2 focus:ring-enterprise-primary focus:border-enterprise-primary transition-all enterprise-focus"
+            />
+          </div>
+        </div>
+
+        {/* Right side actions */}
+        <div className="flex items-center space-x-4">
+          {/* Language Selector */}
+          <div className="relative">
+            <button className="flex items-center space-x-2 px-3 py-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg">
+              <Globe className="h-4 w-4" />
+              <span className="text-sm">EN</span>
+            </button>
+          </div>
+
+          {/* Help */}
+          <button className="p-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg">
+            <HelpCircle className="h-5 w-5" />
+          </button>
+
+          {/* Notifications */}
+          <div className="relative">
+            <button
+              onClick={() => setIsNotificationOpen(!isNotificationOpen)}
+              className="relative p-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg"
+            >
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 h-5 w-5 bg-enterprise-error text-enterprise-text-primary text-xs rounded-full flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {/* Notifications Dropdown */}
+            {isNotificationOpen && (
+              <div className="absolute right-0 mt-2 w-80 enterprise-glass border border-enterprise-border-primary rounded-lg shadow-lg z-50">
+                <div className="p-4 border-b border-enterprise-border-primary">
+                  <h3 className="text-sm font-semibold text-enterprise-text-primary">
+                    Notifications
+                  </h3>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={cn(
+                        "p-4 border-b border-enterprise-border-secondary hover:bg-enterprise-surface-elevated transition-colors cursor-pointer",
+                        notification.unread && "bg-enterprise-surface-elevated/50"
+                      )}
+                    >
+                      <div className="flex items-start space-x-3">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full mt-2 flex-shrink-0",
+                          notification.unread ? "bg-enterprise-primary" : "bg-enterprise-text-tertiary"
+                        )} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-enterprise-text-primary">
+                            {notification.title}
+                          </p>
+                          <p className="text-sm text-enterprise-text-tertiary">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-enterprise-text-tertiary mt-1">
+                            {notification.time}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="p-4 border-t border-enterprise-border-primary">
+                  <button className="w-full text-sm text-enterprise-primary hover:text-enterprise-primary-hover transition-colors enterprise-focus rounded px-2 py-1">
+                    View all notifications
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* User Menu */}
+          <div className="relative">
+            <button
+              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              className="flex items-center space-x-3 px-3 py-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg"
+            >
+              <div className="w-8 h-8 rounded-full bg-enterprise-primary flex items-center justify-center">
+                <span className="text-sm font-semibold text-enterprise-text-primary">
+                  JP
+                </span>
+              </div>
+              <div className="hidden md:block text-left">
+                <p className="text-sm font-medium text-enterprise-text-primary">
+                  John Peterson
+                </p>
+                <p className="text-xs text-enterprise-text-tertiary">
+                  Compliance Manager
+                </p>
+              </div>
+              <ChevronDown className="h-4 w-4" />
+            </button>
+
+            {/* User Dropdown */}
+            {isUserMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 enterprise-glass border border-enterprise-border-primary rounded-lg shadow-lg z-50">
+                <div className="p-4 border-b border-enterprise-border-primary">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-full bg-enterprise-primary flex items-center justify-center">
+                      <span className="text-sm font-semibold text-enterprise-text-primary">
+                        JP
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-enterprise-text-primary">
+                        John Peterson
+                      </p>
+                      <p className="text-xs text-enterprise-text-tertiary">
+                        john.peterson@company.com
+                      </p>
+                      <p className="text-xs text-enterprise-text-tertiary">
+                        Compliance Manager
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="py-2">
+                  <Link
+                    href="/profile"
+                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
+                  >
+                    <User className="h-4 w-4" />
+                    <span>Profile</span>
+                  </Link>
+                  <Link
+                    href="/settings"
+                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
+                  >
+                    <Settings className="h-4 w-4" />
+                    <span>Settings</span>
+                  </Link>
+                  <Link
+                    href="/help"
+                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
+                  >
+                    <HelpCircle className="h-4 w-4" />
+                    <span>Help & Support</span>
+                  </Link>
+                </div>
+
+                <div className="border-t border-enterprise-border-primary py-2">
+                  <button className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-error hover:bg-enterprise-surface-elevated transition-colors enterprise-focus w-full text-left">
+                    <LogOut className="h-4 w-4" />
+                    <span>Sign out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Click outside handlers */}
+      {(isNotificationOpen || isUserMenuOpen) && (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => {
+            setIsNotificationOpen(false);
+            setIsUserMenuOpen(false);
+          }}
+        />
+      )}
+    </header>
+  );
+}

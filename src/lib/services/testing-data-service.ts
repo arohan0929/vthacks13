@@ -49,7 +49,7 @@ export class TestingDataService {
    * Check if testing mode is enabled
    */
   public isTestingMode(): boolean {
-    return process.env.NEXT_PUBLIC_TESTING_MODE === 'true';
+    return process.env.NEXT_PUBLIC_TESTING_MODE === "true";
   }
 
   /**
@@ -61,59 +61,63 @@ export class TestingDataService {
         name: "ITAR",
         confidence: 0.95,
         relevanceScore: 0.92,
-        reasoning: "Project AETHER WATCH involves defense articles and technical data under USML Category XV (Spacecraft and Related Articles). Export control requirements clearly apply.",
+        reasoning:
+          "Project AETHER WATCH involves defense articles and technical data under USML Category XV (Spacecraft and Related Articles). Export control requirements clearly apply.",
         requirements: [
           "U.S. Person verification for all personnel accessing technical data",
           "Export license required for international collaboration",
           "Technical data must be protected from foreign persons",
           "Deemed export controls for foreign national team members",
-          "Proper classification and marking of controlled documents"
+          "Proper classification and marking of controlled documents",
         ],
-        priority: "critical"
+        priority: "critical",
       },
       {
         name: "CMMC Level 2",
         confidence: 0.88,
         relevanceScore: 0.85,
-        reasoning: "As a subcontractor to AMERICAN SYSTEMS supporting DoD, CMMC Level 2 certification is required for handling CUI.",
+        reasoning:
+          "As a subcontractor to AMERICAN SYSTEMS supporting DoD, CMMC Level 2 certification is required for handling CUI.",
         requirements: [
           "110 security controls from NIST SP 800-171",
           "Access control implementation (AC family)",
           "Audit and accountability measures (AU family)",
           "Configuration management (CM family)",
           "Incident response capabilities (IR family)",
-          "System and communications protection (SC family)"
+          "System and communications protection (SC family)",
         ],
-        priority: "critical"
+        priority: "critical",
       },
       {
         name: "NIST SP 800-171",
-        confidence: 0.90,
+        confidence: 0.9,
         relevanceScore: 0.88,
-        reasoning: "Required for safeguarding Controlled Unclassified Information (CUI) including satellite telemetry data provided by DoD.",
+        reasoning:
+          "Required for safeguarding Controlled Unclassified Information (CUI) including satellite telemetry data provided by DoD.",
         requirements: [
           "Multifactor authentication for privileged accounts",
           "Encryption of CUI at rest and in transit",
           "Continuous monitoring and audit logging",
           "Incident response and reporting procedures",
           "Media sanitization according to NIST 800-88",
-          "Risk assessment and system security plans"
+          "Risk assessment and system security plans",
         ],
-        priority: "high"
+        priority: "high",
       },
       {
         name: "IRB",
         confidence: 0.45,
-        relevanceScore: 0.40,
-        reasoning: "While not explicitly mentioned, university research projects may require IRB oversight depending on data collection methods.",
+        relevanceScore: 0.4,
+        reasoning:
+          "While not explicitly mentioned, university research projects may require IRB oversight depending on data collection methods.",
         requirements: [
           "IRB protocol submission if human subjects involved",
           "Informed consent procedures",
           "Data privacy protection measures",
-          "Risk assessment for research participants"
+          "Risk assessment for research participants",
         ],
-        priority: "low"
-      }
+        priority: "low",
+      },
     ];
   }
 
@@ -124,69 +128,79 @@ export class TestingDataService {
     return [
       {
         id: "li-chen-access-status",
-        question: "What is the current access level for Li Chen (PRC citizen) to ITAR-controlled technical data and algorithms, and what specific export license procedures are in place?",
+        question:
+          "What is the current access level for Li Chen (PRC citizen) to ITAR-controlled technical data and algorithms, and what specific export license procedures are in place?",
         category: "implementation",
         priority: "high",
         framework: "ITAR",
-        reasoning: "Li Chen is listed as non-U.S. Person but needs access to ITAR Category XV technical data - immediate compliance risk",
+        reasoning:
+          "Li Chen is listed as non-U.S. Person but needs access to ITAR Category XV technical data - immediate compliance risk",
         expectedAnswerType: "text",
         followUpQuestions: [
           "Has a DDTC export license application been submitted for Li Chen's access?",
-          "What data segregation measures are currently preventing foreign national access?"
-        ]
+          "What data segregation measures are currently preventing foreign national access?",
+        ],
       },
       {
         id: "manchester-collaboration-status",
-        question: "What is the status of the export license application for sharing technical data with Dr. Alistair Smith at University of Manchester?",
+        question:
+          "What is the status of the export license application for sharing technical data with Dr. Alistair Smith at University of Manchester?",
         category: "process",
         priority: "high",
         framework: "ITAR",
-        reasoning: "Meeting notes indicate plan to share algorithm source code with UK collaborator - requires DDTC approval",
+        reasoning:
+          "Meeting notes indicate plan to share algorithm source code with UK collaborator - requires DDTC approval",
         expectedAnswerType: "text",
         followUpQuestions: [
           "What specific technical data will be shared under this collaboration?",
-          "Are there temporary measures in place to prevent unauthorized sharing?"
-        ]
+          "Are there temporary measures in place to prevent unauthorized sharing?",
+        ],
       },
       {
         id: "aws-cui-security",
-        question: "How is the CUI satellite telemetry data secured on your commercial AWS infrastructure, and is it properly segregated from other university data?",
+        question:
+          "How is the CUI satellite telemetry data secured on your commercial AWS infrastructure, and is it properly segregated from other university data?",
         category: "implementation",
         priority: "high",
         framework: "NIST SP 800-171",
-        reasoning: "System architecture shows CUI data on standard university AWS tenant - needs CMMC-compliant protection",
+        reasoning:
+          "System architecture shows CUI data on standard university AWS tenant - needs CMMC-compliant protection",
         expectedAnswerType: "text",
         followUpQuestions: [
           "What specific AWS security controls are configured for CUI protection?",
-          "How do you ensure FIPS-validated encryption for data at rest and in transit?"
-        ]
+          "How do you ensure FIPS-validated encryption for data at rest and in transit?",
+        ],
       },
       {
         id: "dmp-completion-timeline",
-        question: "What is your timeline for completing the missing sections of the Data Management Plan, specifically the incident response procedures and media sanitization requirements?",
+        question:
+          "What is your timeline for completing the missing sections of the Data Management Plan, specifically the incident response procedures and media sanitization requirements?",
         category: "gap_filling",
         priority: "medium",
         framework: "NIST SP 800-171",
-        reasoning: "DMP review found document incomplete - missing critical sections required for CUI handling",
+        reasoning:
+          "DMP review found document incomplete - missing critical sections required for CUI handling",
         expectedAnswerType: "text",
         followUpQuestions: [
           "Who is responsible for completing the DMP updates?",
-          "What System Security Plan (SSP) will be referenced in the DMP?"
-        ]
+          "What System Security Plan (SSP) will be referenced in the DMP?",
+        ],
       },
       {
         id: "audit-log-worm-implementation",
-        question: "What is your plan to implement WORM (Write Once Read Many) storage for audit logs to meet the AU-02 immutability requirements?",
+        question:
+          "What is your plan to implement WORM (Write Once Read Many) storage for audit logs to meet the AU-02 immutability requirements?",
         category: "risk_clarification",
         priority: "medium",
         framework: "CMMC Level 2",
-        reasoning: "Test AU-02 showed partial implementation - log immutability not verified, required for CMMC Level 2 certification",
+        reasoning:
+          "Test AU-02 showed partial implementation - log immutability not verified, required for CMMC Level 2 certification",
         expectedAnswerType: "text",
         followUpQuestions: [
           "What timeline do you have for implementing object lock on audit storage?",
-          "How will you update SIEM parsers to handle immutable log formats?"
-        ]
-      }
+          "How will you update SIEM parsers to handle immutable log formats?",
+        ],
+      },
     ];
   }
 
@@ -198,27 +212,58 @@ export class TestingDataService {
       const response = await this.callGeminiWithContext(query);
       return response;
     } catch (error) {
-      console.error('Error calling Gemini API:', error);
-      // Fallback to a generic response if Gemini fails
+      console.error("Error calling Gemini API:", error);
+
+      // Check if it's a token limit error
+      if (error instanceof Error && error.message.includes("token limits")) {
+        return {
+          response: `I encountered a token limit issue while processing your query about Project AETHER WATCH. The documentation is quite extensive, so I've provided a simplified response based on the key compliance frameworks: ITAR (USML Category XV), CMMC Level 2, and NIST SP 800-171. For more detailed information, please ask more specific questions about individual compliance areas.`,
+          sources: [
+            {
+              type: "knowledge_base",
+              title: "Project AETHER WATCH - Compliance Overview",
+              content:
+                "AI-driven anomaly detection for satellite telemetry with ITAR, CMMC Level 2, and NIST SP 800-171 requirements",
+              confidence: 0.7,
+            },
+          ],
+          suggestedActions: [
+            "Ask about specific compliance frameworks (ITAR, CMMC, NIST)",
+            "Inquire about personnel access controls",
+            "Request details on specific security controls",
+          ],
+          relatedTopics: [
+            "ITAR export controls",
+            "CMMC Level 2 certification",
+            "NIST SP 800-171 controls",
+            "CUI handling procedures",
+          ],
+        };
+      }
+
+      // Fallback to a generic response for other errors
       return {
         response: `I apologize, but I encountered an error processing your query about Project AETHER WATCH. The project involves AI/ML algorithms for satellite telemetry analysis with complex compliance requirements including ITAR, CMMC Level 2, and NIST SP 800-171. Please try rephrasing your question.`,
-        sources: [{
-          type: "knowledge_base",
-          title: "Project AETHER WATCH Documentation",
-          content: "Compliance assessment documentation for defense contractor project...",
-          confidence: 0.5
-        }],
+        sources: [
+          {
+            type: "knowledge_base",
+            title: "Project AETHER WATCH Documentation",
+            content:
+              "Compliance assessment documentation for defense contractor project...",
+            confidence: 0.5,
+          },
+        ],
         suggestedActions: [
           "Try rephrasing your question",
           "Ask about specific compliance frameworks",
-          "Review the uploaded documentation"
+          "Review the uploaded documentation",
         ],
         relatedTopics: [
           "ITAR compliance",
           "CMMC Level 2",
           "Export control",
-          "CUI handling"
-        ]
+          "CUI handling",
+        ],
       };
     }
   }
@@ -226,103 +271,160 @@ export class TestingDataService {
   /**
    * Call Gemini API directly with user query and full example.md context
    */
-  private async callGeminiWithContext(userQuery: string): Promise<TestingChatResponse> {
+  private async callGeminiWithContext(
+    userQuery: string
+  ): Promise<TestingChatResponse> {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GOOGLE_GEMINI_API_KEY not found in environment variables');
+      throw new Error(
+        "GOOGLE_GEMINI_API_KEY not found in environment variables"
+      );
     }
 
     const exampleMdContent = await this.getExampleMdContent();
 
-    const prompt = `You are a compliance expert analyzing the Project AETHER WATCH documentation. Based on the provided compliance assessment documentation, answer the user's question accurately and comprehensively.
+    // Truncate the context to avoid token limits (keep first 40000 characters)
+    // Increased from 20000 to 40000 since we increased maxOutputTokens to 16384
+    const truncatedContext =
+      exampleMdContent.length > 40000
+        ? exampleMdContent.substring(0, 40000) +
+          "... [Content truncated for token limits]"
+        : exampleMdContent;
 
-CONTEXT - Project AETHER WATCH Compliance Assessment Dossier:
-${exampleMdContent}
+    const prompt = `You are a compliance expert analyzing Project AETHER WATCH documentation. Answer the user's question based on the provided context.
+
+CONTEXT:
+${truncatedContext}
 
 USER QUESTION: ${userQuery}
 
-Please provide a detailed response based on the documentation above. Include:
-1. A comprehensive answer to the user's question
-2. Specific references to relevant sections of the documentation
-3. 3-5 suggested actions based on the findings
-4. 3-5 related topics the user might want to explore
+Provide a concise response with:
+1. Direct answer to the question
+2. Key compliance requirements mentioned
+3. 2-3 suggested actions
+4. 2-3 related topics
 
-Format your response as a JSON object with this structure:
+Format as JSON:
 {
-  "response": "Your detailed answer here...",
-  "sources": [
-    {
-      "type": "knowledge_base",
-      "title": "Relevant section title",
-      "content": "Brief excerpt from the documentation",
-      "confidence": 0.9
-    }
-  ],
-  "suggestedActions": [
-    "Action 1",
-    "Action 2",
-    "Action 3"
-  ],
-  "relatedTopics": [
-    "Topic 1",
-    "Topic 2",
-    "Topic 3"
-  ]
-}
-
-Ensure all information comes directly from the provided documentation. Do not make up or infer information not present in the context.`;
+  "response": "Your answer here...",
+  "sources": [{"type": "knowledge_base", "title": "Section", "content": "Excerpt", "confidence": 0.9}],
+  "suggestedActions": ["Action 1", "Action 2"],
+  "relatedTopics": ["Topic 1", "Topic 2"]
+}`;
 
     const requestBody = {
-      contents: [{
-        parts: [{
-          text: prompt
-        }]
-      }],
+      contents: [
+        {
+          parts: [
+            {
+              text: prompt,
+            },
+          ],
+        },
+      ],
       generationConfig: {
         temperature: 0.3,
         topK: 32,
         topP: 1,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 16384,
       },
       safetySettings: [
         {
           category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
           category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
           category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
         },
         {
           category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_MEDIUM_AND_ABOVE"
-        }
-      ]
+          threshold: "BLOCK_MEDIUM_AND_ABOVE",
+        },
+      ],
     };
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
       }
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.status} ${response.statusText}`);
+      throw new Error(
+        `Gemini API error: ${response.status} ${response.statusText}`
+      );
     }
 
     const data = await response.json();
 
-    if (!data.candidates || !data.candidates[0] || !data.candidates[0].content) {
-      throw new Error('Invalid response format from Gemini API');
+    // Log the response structure for debugging
+    console.log(
+      "Gemini API response structure:",
+      JSON.stringify(data, null, 2)
+    );
+
+    if (
+      !data.candidates ||
+      !data.candidates[0] ||
+      !data.candidates[0].content
+    ) {
+      throw new Error("Invalid response format from Gemini API");
+    }
+
+    // Check if the response was truncated due to token limits
+    if (data.candidates[0].finishReason === "MAX_TOKENS") {
+      console.warn("Gemini API response truncated due to token limits");
+      // Instead of throwing an error, return a partial response with a warning
+      const partialText = data.candidates[0].content.parts[0]?.text || "";
+      return {
+        response:
+          partialText +
+          "\n\n[Response was truncated due to length limits. Please ask a more specific question for a complete answer.]",
+        sources: [
+          {
+            type: "knowledge_base",
+            title: "Response truncated",
+            content: "The response exceeded token limits and was truncated",
+            confidence: 0.5,
+          },
+        ],
+        suggestedActions: [
+          "Ask a more specific question",
+          "Break down your question into smaller parts",
+          "Focus on a specific compliance area",
+        ],
+        relatedTopics: [
+          "ITAR compliance",
+          "CMMC Level 2",
+          "Export control",
+          "CUI handling",
+        ],
+      };
+    }
+
+    // Check if parts array exists and has content
+    if (
+      !data.candidates[0].content.parts ||
+      !data.candidates[0].content.parts[0] ||
+      !data.candidates[0].content.parts[0].text
+    ) {
+      console.error(
+        "Invalid parts structure in Gemini response:",
+        data.candidates[0].content
+      );
+      throw new Error(
+        "Invalid response format from Gemini API - missing parts or text content"
+      );
     }
 
     const generatedText = data.candidates[0].content.parts[0].text;
@@ -332,62 +434,76 @@ Ensure all information comes directly from the provided documentation. Do not ma
       let cleanedText = generatedText.trim();
 
       // Remove markdown code blocks if present
-      if (cleanedText.startsWith('```json')) {
-        cleanedText = cleanedText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
-      } else if (cleanedText.startsWith('```')) {
-        cleanedText = cleanedText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      if (cleanedText.startsWith("```json")) {
+        cleanedText = cleanedText
+          .replace(/^```json\s*/, "")
+          .replace(/\s*```$/, "");
+      } else if (cleanedText.startsWith("```")) {
+        cleanedText = cleanedText.replace(/^```\s*/, "").replace(/\s*```$/, "");
       }
 
       // Try to parse the cleaned JSON response
       const parsedResponse = JSON.parse(cleanedText);
 
       // Validate the parsed response has the expected structure
-      if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.response) {
+      if (
+        parsedResponse &&
+        typeof parsedResponse === "object" &&
+        parsedResponse.response
+      ) {
         return {
-          response: parsedResponse.response || '',
-          sources: parsedResponse.sources || [{
-            type: "knowledge_base" as const,
-            title: "Project AETHER WATCH Compliance Assessment",
-            content: "AI-generated response based on compliance documentation",
-            confidence: 0.8
-          }],
+          response: parsedResponse.response || "",
+          sources: parsedResponse.sources || [
+            {
+              type: "knowledge_base" as const,
+              title: "Project AETHER WATCH Compliance Assessment",
+              content:
+                "AI-generated response based on compliance documentation",
+              confidence: 0.8,
+            },
+          ],
           suggestedActions: parsedResponse.suggestedActions || [
             "Review the specific documentation sections mentioned",
             "Consult with compliance team for implementation guidance",
-            "Assess current project status against requirements"
+            "Assess current project status against requirements",
           ],
           relatedTopics: parsedResponse.relatedTopics || [
             "ITAR compliance requirements",
             "CMMC Level 2 controls",
             "Export control procedures",
-            "CUI handling requirements"
-          ]
+            "CUI handling requirements",
+          ],
         };
       } else {
-        throw new Error('Invalid response structure');
+        throw new Error("Invalid response structure");
       }
     } catch (parseError) {
-      console.log('JSON parsing failed, treating as plain text response:', parseError);
+      console.log(
+        "JSON parsing failed, treating as plain text response:",
+        parseError
+      );
       // If JSON parsing fails, create a structured response from the text
       return {
         response: generatedText,
-        sources: [{
-          type: "knowledge_base" as const,
-          title: "Project AETHER WATCH Compliance Assessment",
-          content: "AI-generated response based on compliance documentation",
-          confidence: 0.8
-        }],
+        sources: [
+          {
+            type: "knowledge_base" as const,
+            title: "Project AETHER WATCH Compliance Assessment",
+            content: "AI-generated response based on compliance documentation",
+            confidence: 0.8,
+          },
+        ],
         suggestedActions: [
           "Review the specific documentation sections mentioned",
           "Consult with compliance team for implementation guidance",
-          "Assess current project status against requirements"
+          "Assess current project status against requirements",
         ],
         relatedTopics: [
           "ITAR compliance requirements",
           "CMMC Level 2 controls",
           "Export control procedures",
-          "CUI handling requirements"
-        ]
+          "CUI handling requirements",
+        ],
       };
     }
   }
@@ -507,7 +623,20 @@ Current compliance readiness estimated at 65% with technical infrastructure larg
   /**
    * Get hardcoded vector search results based on query
    */
-  public getVectorSearchResults(query: string): any {
+  public getVectorSearchResults(query: string): {
+    query: string;
+    chunks: Array<{
+      id: string;
+      content: string;
+      metadata: {
+        document_id: string;
+        source_file_name: string;
+        chunk_type: string;
+      };
+      similarity: number;
+      relevanceScore: number;
+    }>;
+  } {
     const lowerQuery = query.toLowerCase();
 
     // Return relevant sections from example.md based on query
@@ -523,63 +652,67 @@ Current compliance readiness estimated at 65% with technical infrastructure larg
       },
     };
 
-    if (lowerQuery.includes('itar') || lowerQuery.includes('export')) {
+    if (lowerQuery.includes("itar") || lowerQuery.includes("export")) {
       return {
         ...baseResponse,
         chunks: [
           {
             id: "itar-compliance-1",
-            content: "ITAR Compliance Brief: The algorithms, source code, and technical specifications developed under the project are defined as USML Category XV articles. Providing a non-U.S. Person, such as a foreign national graduate student, with access to this technical data constitutes a deemed export. This action requires an export license from the Department of State's Directorate of Defense Trade Controls (DDTC) before access is granted.",
+            content:
+              "ITAR Compliance Brief: The algorithms, source code, and technical specifications developed under the project are defined as USML Category XV articles. Providing a non-U.S. Person, such as a foreign national graduate student, with access to this technical data constitutes a deemed export. This action requires an export license from the Department of State's Directorate of Defense Trade Controls (DDTC) before access is granted.",
             metadata: {
               document_id: "example-md",
               source_file_name: "example.md",
-              chunk_type: "compliance_requirement"
+              chunk_type: "compliance_requirement",
             },
             similarity: 0.92,
-            relevanceScore: 0.92
+            relevanceScore: 0.92,
           },
           {
             id: "itar-personnel-1",
-            content: "Li Chen (Ph.D. Student, Purdue University, People's Republic of China, U.S. Person Status: N). Constraint: ITAR-controlled technical data and code MUST NOT be accessible by non–U.S. Persons (e.g., Li Chen) absent an export license.",
+            content:
+              "Li Chen (Ph.D. Student, Purdue University, People's Republic of China, U.S. Person Status: N). Constraint: ITAR-controlled technical data and code MUST NOT be accessible by non–U.S. Persons (e.g., Li Chen) absent an export license.",
             metadata: {
               document_id: "example-md",
               source_file_name: "example.md",
-              chunk_type: "personnel_restriction"
+              chunk_type: "personnel_restriction",
             },
             similarity: 0.88,
-            relevanceScore: 0.88
-          }
-        ]
+            relevanceScore: 0.88,
+          },
+        ],
       };
     }
 
-    if (lowerQuery.includes('cmmc') || lowerQuery.includes('security')) {
+    if (lowerQuery.includes("cmmc") || lowerQuery.includes("security")) {
       return {
         ...baseResponse,
         chunks: [
           {
             id: "cmmc-controls-1",
-            content: "CMMC Level 2 Controls (Based on NIST SP 800-171 Rev 2): Access Control (AC) 3.1.1: Limit information system access to authorized users. 3.5.3: Use multifactor authentication for local and network access to privileged accounts and for network access to non-privileged accounts.",
+            content:
+              "CMMC Level 2 Controls (Based on NIST SP 800-171 Rev 2): Access Control (AC) 3.1.1: Limit information system access to authorized users. 3.5.3: Use multifactor authentication for local and network access to privileged accounts and for network access to non-privileged accounts.",
             metadata: {
               document_id: "example-md",
               source_file_name: "example.md",
-              chunk_type: "security_control"
+              chunk_type: "security_control",
             },
-            similarity: 0.90,
-            relevanceScore: 0.90
+            similarity: 0.9,
+            relevanceScore: 0.9,
           },
           {
             id: "cmmc-testing-1",
-            content: "Test Results: AC-01 Pass (MFA enforcement verified), AC-02 Pass (least privilege IAM roles), SC-01 Pass (FIPS-validated TLS), AU-02 Partial (log immutability gaps), IR-01 Partial (incident response plan needs DFARS reporting).",
+            content:
+              "Test Results: AC-01 Pass (MFA enforcement verified), AC-02 Pass (least privilege IAM roles), SC-01 Pass (FIPS-validated TLS), AU-02 Partial (log immutability gaps), IR-01 Partial (incident response plan needs DFARS reporting).",
             metadata: {
               document_id: "example-md",
               source_file_name: "example.md",
-              chunk_type: "test_results"
+              chunk_type: "test_results",
             },
             similarity: 0.85,
-            relevanceScore: 0.85
-          }
-        ]
+            relevanceScore: 0.85,
+          },
+        ],
       };
     }
 
@@ -589,38 +722,41 @@ Current compliance readiness estimated at 65% with technical infrastructure larg
       chunks: [
         {
           id: "project-overview-1",
-          content: "Project AETHER WATCH: AI-Driven Anomaly Detection for Enhanced Space Domain Awareness. Our primary objective is to create and validate algorithms capable of analyzing satellite telemetry data in near-real-time to identify Cyber-Suspicious Indicators (CSI). This project seeks funding to support a 24-month research and development effort, leveraging the unique expertise of Purdue University's Advanced Signal Processing Lab.",
+          content:
+            "Project AETHER WATCH: AI-Driven Anomaly Detection for Enhanced Space Domain Awareness. Our primary objective is to create and validate algorithms capable of analyzing satellite telemetry data in near-real-time to identify Cyber-Suspicious Indicators (CSI). This project seeks funding to support a 24-month research and development effort, leveraging the unique expertise of Purdue University's Advanced Signal Processing Lab.",
           metadata: {
             document_id: "example-md",
             source_file_name: "example.md",
-            chunk_type: "project_description"
+            chunk_type: "project_description",
           },
-          similarity: 0.80,
-          relevanceScore: 0.80
+          similarity: 0.8,
+          relevanceScore: 0.8,
         },
         {
           id: "compliance-scope-1",
-          content: "Compliance Scope: DFARS 252.204-7012 • NIST SP 800-171 (CMMC Level 2) • ITAR (USML Cat XV). The project involves processing, storing, and transmitting of Controlled Unclassified Information (CUI) and ITAR-controlled technical data.",
+          content:
+            "Compliance Scope: DFARS 252.204-7012 • NIST SP 800-171 (CMMC Level 2) • ITAR (USML Cat XV). The project involves processing, storing, and transmitting of Controlled Unclassified Information (CUI) and ITAR-controlled technical data.",
           metadata: {
             document_id: "example-md",
             source_file_name: "example.md",
-            chunk_type: "compliance_framework"
+            chunk_type: "compliance_framework",
           },
           similarity: 0.78,
-          relevanceScore: 0.78
+          relevanceScore: 0.78,
         },
         {
           id: "risk-assessment-1",
-          content: "Risk Register: R-01 Non–U.S. Person access to ITAR code/data (Medium likelihood, High impact). R-02 Egress to foreign validation service enabled by default (Low likelihood, High impact). R-03 Incomplete DMP for CUI specifics (Medium likelihood, Medium impact).",
+          content:
+            "Risk Register: R-01 Non–U.S. Person access to ITAR code/data (Medium likelihood, High impact). R-02 Egress to foreign validation service enabled by default (Low likelihood, High impact). R-03 Incomplete DMP for CUI specifics (Medium likelihood, Medium impact).",
           metadata: {
             document_id: "example-md",
             source_file_name: "example.md",
-            chunk_type: "risk_analysis"
+            chunk_type: "risk_analysis",
           },
           similarity: 0.75,
-          relevanceScore: 0.75
-        }
-      ]
+          relevanceScore: 0.75,
+        },
+      ],
     };
   }
 }

@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthInitializer from "@/components/AuthInitializer/AuthInitializer";
 import { Toaster } from "@/components/ui/sonner";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter"
+});
 
 export const metadata: Metadata = {
   title: "Complai",
@@ -16,7 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <body
-        className="font-sans antialiased"
+        className={`${inter.variable} font-sans antialiased`}
       >
         <AuthInitializer />
         {children}

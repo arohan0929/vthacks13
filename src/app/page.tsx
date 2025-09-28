@@ -1,307 +1,567 @@
-"use client";
+'use client';
 
-import { useAuthStore } from "@/stores/auth-store/auth-store";
-import { useProjectsStore } from "@/stores/projects-store";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { ProjectForm } from "@/components/processor/project-form";
-import { CreateProjectDialog } from "@/components/create-project-dialog";
-import { toast } from "sonner";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Plus, FileText, Target, BarChart3, Clock, User, LogOut, Monitor } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuthStore } from '@/stores/auth-store/auth-store';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
+import {
+  Plus,
+  Folder,
+  FileText,
+  Calendar,
+  TrendingUp,
+  LogOut,
+  Monitor,
+  Shield,
+  Users,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  BarChart3,
+  Target,
+  Zap,
+  ArrowRight,
+  Star,
+  Filter,
+  Search,
+  Grid3X3,
+  List
+} from 'lucide-react';
+import { ProjectSummary } from '@/lib/db/types';
+import { CreateProjectDialog } from '@/components/create-project-dialog';
+import { EnterpriseLayout } from '@/components/enterprise/layout';
 
-export default function Home() {
+export default function ProjectsPage() {
+  const router = useRouter();
   const { user, loading, signOut } = useAuthStore();
-  const { projects, isLoading, fetchProjects, createProject } = useProjectsStore();
-  const [showProjectForm, setShowProjectForm] = useState(false);
-  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    if (!loading && !user) {
+      router.push('/login');
+      return;
+    }
+
     if (user) {
       fetchProjects();
     }
-  }, [user, fetchProjects]);
+  }, [user, loading, router]);
 
-  const handleLogout = async () => {
+  const fetchProjects = async () => {
     try {
-      await signOut();
-      toast.success("Logged out successfully!");
-    } catch (error) {
-      console.error("Logout error:", error);
-      toast.error("Failed to log out. Please try again.");
-    }
-  };
+      setIsLoading(true);
+      setError(null);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100';
-      case 'analyzing':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100';
-      case 'draft':
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100';
-    }
-  };
+      const token = await user?.getIdToken();
+      if (!token) {
+        throw new Error('No authentication token');
+      }
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <BarChart3 className="h-4 w-4" />;
-      case 'analyzing':
-        return <Clock className="h-4 w-4" />;
-      case 'draft':
-      default:
-        return <FileText className="h-4 w-4" />;
-    }
-  };
-
-  const handleCreateProject = async (data: { name: string; description: string }) => {
-    try {
-      await createProject({
-        user_id: '', // This will be ignored by the API - user_id comes from token
-        name: data.name,
-        description: data.description,
+      const response = await fetch('/api/projects', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
       });
-      toast.success("Project created successfully!");
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch projects: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setProjects(data.projects || []);
     } catch (error) {
-      console.error("Failed to create project:", error);
-      toast.error("Failed to create project. Please try again.");
-      throw error; // Re-throw to let the form handle the error state
+      console.error('Error fetching projects:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load projects');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleCreateProjectWithUseCase = async (data: { useCase: string; description?: string }) => {
+  const handleCreateProject = () => {
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleCreateProjectSubmit = async (data: { useCase: string; description?: string }) => {
+    if (!user) {
+      throw new Error('You must be logged in to create a project');
+    }
+
     try {
-      // For use case selection, we'll create a project with a generated name based on use case
+      const token = await user.getIdToken();
+
       const useCaseNames: Record<string, string> = {
-        'research-labs': 'Research Lab Compliance Project',
+        'research-labs': 'Research Lab Project',
         'student-organization': 'Student Organization Project',
-        'university-course': 'Course Project',
+        'university-course': 'University Course Project',
         'university-admin': 'University Administration Project',
-        'startup': 'Startup Compliance Project',
+        'startup': 'Startup Project',
         'other': 'Custom Project'
       };
 
-      let projectName = useCaseNames[data.useCase] || 'New Project';
-      let projectDescription = data.description || `Compliance project for ${data.useCase}`;
+      const projectName = useCaseNames[data.useCase] || 'New Project';
+      const projectDescription = data.description || `Compliance project for ${data.useCase.replace('-', ' ')}`;
 
-      // For "other" projects, the description comes formatted as "title: description"
-      if (data.useCase === 'other' && data.description) {
-        const parts = data.description.split(': ');
-        if (parts.length >= 2) {
-          projectName = parts[0];
-          projectDescription = parts.slice(1).join(': ');
-        }
-      }
-
-      await createProject({
-        user_id: '', // This will be ignored by the API - user_id comes from token
-        name: projectName,
-        description: projectDescription,
-        use_case: data.useCase,
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: projectName,
+          description: projectDescription,
+        }),
       });
 
-      toast.success("Project created successfully!");
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create project');
+      }
+
+      const result = await response.json();
+
+      setIsCreateDialogOpen(false);
+      router.push(`/projects/${result.project.id}`);
+
+      await fetchProjects();
     } catch (error) {
-      console.error("Failed to create project:", error);
-      toast.error("Failed to create project. Please try again.");
+      console.error('Error creating project:', error);
       throw error;
     }
   };
 
-  if (loading) {
+  const handleProjectClick = (projectId: string) => {
+    router.push(`/projects/${projectId}`);
+  };
+
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'default';
+      case 'analyzing':
+        return 'secondary';
+      case 'draft':
+      default:
+        return 'outline';
+    }
+  };
+
+  const mockMetrics = {
+    totalProjects: projects.length,
+    activeProjects: projects.filter(p => p.status === 'analyzing').length,
+    completedProjects: projects.filter(p => p.status === 'completed').length,
+    averageCompliance: projects.length > 0
+      ? Math.round(projects.reduce((acc, p) => acc + (p.latest_compliance_score || 0), 0) / projects.length)
+      : 0,
+    riskScore: 23,
+    pendingTasks: 12
+  };
+
+  const onboardingSteps = [
+    {
+      icon: Shield,
+      title: "Set up your first compliance project",
+      description: "Create a project to start tracking your compliance posture across multiple frameworks.",
+      action: "Create Project",
+      completed: projects.length > 0,
+      onClick: handleCreateProject
+    },
+    {
+      icon: FileText,
+      title: "Upload compliance documents",
+      description: "Connect your Google Drive or upload documents to begin automated compliance analysis.",
+      action: "Upload Documents",
+      completed: projects.some(p => p.document_count > 0),
+      onClick: () => router.push('/dashboard')
+    },
+    {
+      icon: BarChart3,
+      title: "Review compliance insights",
+      description: "Analyze your compliance gaps and get actionable recommendations from our AI.",
+      action: "View Insights",
+      completed: projects.some(p => p.latest_compliance_score > 0),
+      onClick: () => router.push('/analytics')
+    },
+    {
+      icon: Users,
+      title: "Invite team members",
+      description: "Collaborate with your compliance team by inviting members to your organization.",
+      action: "Invite Team",
+      completed: false,
+      onClick: () => router.push('/organization/team')
+    }
+  ];
+
+  const completedSteps = onboardingSteps.filter(step => step.completed).length;
+  const progressPercentage = (completedSteps / onboardingSteps.length) * 100;
+
+
+  if (loading || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-4 w-full" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-10 w-full" />
-          </CardContent>
-        </Card>
-      </div>
+      <EnterpriseLayout>
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="enterprise-shimmer h-8 w-64 rounded mb-2" />
+              <div className="enterprise-shimmer h-4 w-96 rounded" />
+            </div>
+            <div className="enterprise-shimmer h-10 w-32 rounded" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="enterprise-card p-6">
+                <div className="enterprise-shimmer h-6 w-3/4 rounded mb-2" />
+                <div className="enterprise-shimmer h-8 w-1/2 rounded" />
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="enterprise-card p-6">
+                <div className="enterprise-shimmer h-6 w-3/4 rounded mb-4" />
+                <div className="space-y-2">
+                  <div className="enterprise-shimmer h-4 w-full rounded" />
+                  <div className="enterprise-shimmer h-4 w-2/3 rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </EnterpriseLayout>
     );
   }
 
-  if (!user) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-bold">Compliance Copilot</CardTitle>
-            <CardDescription>
-              Upload everything, get instant compliance clarity
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex flex-col gap-2">
-              <Button asChild className="w-full">
-                <Link href="/login">Sign In</Link>
-              </Button>
-              <Button asChild variant="outline" className="w-full">
-                <Link href="/signup">Create Account</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <EnterpriseLayout>
+        <div className="text-center py-16">
+          <AlertTriangle className="h-16 w-16 text-enterprise-error mx-auto mb-4" />
+          <h1 className="text-2xl font-bold text-enterprise-text-primary mb-4">Something went wrong</h1>
+          <p className="text-enterprise-text-secondary mb-6">{error}</p>
+          <Button onClick={fetchProjects} className="enterprise-button-primary">
+            Try Again
+          </Button>
+        </div>
+      </EnterpriseLayout>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b bg-white dark:bg-gray-900">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold">Compliance Copilot</h1>
-              <p className="text-sm text-muted-foreground">Universal Input Processor</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4" />
-                <span className="text-sm">{user.displayName}</span>
-              </div>
-              <Button onClick={handleLogout} variant="outline" size="sm">
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-bold">Your Projects</h2>
-            <p className="text-muted-foreground mt-1">
-              Manage your compliance projects and analyze documents
+    <EnterpriseLayout>
+      <div className="space-y-8">
+        {/* Header */}
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
+          <div className="enterprise-fade-in">
+            <h1 className="text-3xl font-bold text-enterprise-text-primary">
+              Compliance Projects
+            </h1>
+            <p className="text-enterprise-text-secondary mt-2">
+              Manage your compliance assessment projects and track organizational progress
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button variant="outline" className="gap-2">
-                <Monitor className="h-4 w-4" />
-                Dashboard Demo
-              </Button>
-            </Link>
-            <Button onClick={() => setShowCreateProjectDialog(true)} className="gap-2">
-              <Plus className="h-4 w-4" />
-              Create Project
+          <div className="flex items-center space-x-3 enterprise-fade-in" style={{ animationDelay: '0.1s' }}>
+            <Button
+              onClick={() => router.push('/dashboard')}
+              className="enterprise-button-secondary"
+            >
+              <Monitor className="h-4 w-4 mr-2" />
+              Dashboard
+            </Button>
+            <Button onClick={handleCreateProject} className="enterprise-button-primary">
+              <Plus className="h-4 w-4 mr-2" />
+              New Project
             </Button>
           </div>
         </div>
 
-        {/* Projects Loading State */}
-        {isLoading && (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-testid="projects-loading">
-            {[...Array(3)].map((_, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-6 w-3/4" />
-                  <Skeleton className="h-4 w-full" />
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <Skeleton className="h-4 w-1/2" />
-                    <Skeleton className="h-4 w-2/3" />
+        {/* Metrics Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="enterprise-card p-6 enterprise-fade-in" style={{ animationDelay: '0.2s' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-enterprise-text-tertiary text-sm font-medium">Total Projects</p>
+                <p className="text-3xl font-bold text-enterprise-text-primary">{mockMetrics.totalProjects}</p>
+              </div>
+              <div className="w-12 h-12 bg-enterprise-primary/10 rounded-lg flex items-center justify-center">
+                <Folder className="h-6 w-6 text-enterprise-primary" />
+              </div>
+            </div>
+          </div>
+
+          <div className="enterprise-card p-6 enterprise-fade-in" style={{ animationDelay: '0.3s' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-enterprise-text-tertiary text-sm font-medium">Active Projects</p>
+                <p className="text-3xl font-bold text-enterprise-text-primary">{mockMetrics.activeProjects}</p>
+              </div>
+              <div className="w-12 h-12 bg-enterprise-success/10 rounded-lg flex items-center justify-center">
+                <Target className="h-6 w-6 text-enterprise-success" />
+              </div>
+            </div>
+          </div>
+
+          <div className="enterprise-card p-6 enterprise-fade-in" style={{ animationDelay: '0.4s' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-enterprise-text-tertiary text-sm font-medium">Avg. Compliance</p>
+                <p className="text-3xl font-bold text-enterprise-text-primary">{mockMetrics.averageCompliance}%</p>
+              </div>
+              <div className="w-12 h-12 bg-enterprise-accent/10 rounded-lg flex items-center justify-center">
+                <BarChart3 className="h-6 w-6 text-enterprise-accent" />
+              </div>
+            </div>
+          </div>
+
+          <div className="enterprise-card p-6 enterprise-fade-in" style={{ animationDelay: '0.5s' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-enterprise-text-tertiary text-sm font-medium">Risk Score</p>
+                <p className="text-3xl font-bold text-enterprise-text-primary">{mockMetrics.riskScore}</p>
+              </div>
+              <div className="w-12 h-12 bg-enterprise-warning/10 rounded-lg flex items-center justify-center">
+                <AlertTriangle className="h-6 w-6 text-enterprise-warning" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Onboarding Progress (only shown if not all steps completed) */}
+        {completedSteps < onboardingSteps.length && (
+          <div className="enterprise-card p-6 enterprise-fade-in" style={{ animationDelay: '0.6s' }}>
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-semibold text-enterprise-text-primary">
+                  Getting Started
+                </h3>
+                <p className="text-enterprise-text-secondary">
+                  Complete these steps to maximize your compliance management
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-2xl font-bold text-enterprise-primary">
+                  {completedSteps}/{onboardingSteps.length}
+                </p>
+                <p className="text-enterprise-text-tertiary text-sm">
+                  Steps completed
+                </p>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-enterprise-text-secondary">Progress</span>
+                <span className="text-sm text-enterprise-text-secondary">{Math.round(progressPercentage)}%</span>
+              </div>
+              <Progress value={progressPercentage} className="h-2" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {onboardingSteps.map((step, index) => (
+                <div
+                  key={index}
+                  className={`p-4 rounded-lg border transition-all duration-200 ${
+                    step.completed
+                      ? 'bg-enterprise-success/5 border-enterprise-success/20'
+                      : 'border-enterprise-border-primary hover:bg-enterprise-surface-elevated cursor-pointer'
+                  }`}
+                  onClick={!step.completed ? step.onClick : undefined}
+                >
+                  <div className="flex items-start space-x-3">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                      step.completed
+                        ? 'bg-enterprise-success text-enterprise-text-primary'
+                        : 'bg-enterprise-surface-elevated'
+                    }`}>
+                      {step.completed ? (
+                        <CheckCircle2 className="h-5 w-5" />
+                      ) : (
+                        <step.icon className="h-5 w-5 text-enterprise-primary" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-enterprise-text-primary mb-1">
+                        {step.title}
+                      </h4>
+                      <p className="text-sm text-enterprise-text-secondary mb-3">
+                        {step.description}
+                      </p>
+                      {!step.completed && (
+                        <Button
+                          size="sm"
+                          className="enterprise-button-primary text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            step.onClick();
+                          }}
+                        >
+                          {step.action}
+                          <ArrowRight className="h-3 w-3 ml-1" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Empty State */}
-        {!isLoading && projects.length === 0 && (
-          <div className="text-center py-12">
-            <Target className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-2xl font-semibold mb-2">No projects yet</h3>
-            <p className="text-muted-foreground mb-6">
-              Create your first project to get started with compliance analysis
-            </p>
-            <div className="flex items-center gap-3 justify-center">
-              <Link href="/dashboard">
-                <Button variant="outline" size="lg" className="gap-2">
-                  <Monitor className="h-5 w-5" />
-                  View Dashboard Demo
-                </Button>
-              </Link>
-              <Button onClick={() => setShowCreateProjectDialog(true)} size="lg" className="gap-2">
-                <Plus className="h-5 w-5" />
-                Create Your First Project
+        {/* Search and View Controls */}
+        {projects.length > 0 && (
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0 enterprise-fade-in" style={{ animationDelay: '0.7s' }}>
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-enterprise-text-tertiary" />
+                <input
+                  type="text"
+                  placeholder="Search projects..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 pr-4 py-2 bg-enterprise-surface-elevated border border-enterprise-border-primary rounded-lg text-enterprise-text-primary placeholder-enterprise-text-tertiary focus:outline-none focus:ring-2 focus:ring-enterprise-primary focus:border-enterprise-primary transition-all enterprise-focus"
+                />
+              </div>
+              <Button className="enterprise-button-secondary">
+                <Filter className="h-4 w-4 mr-2" />
+                Filter
+              </Button>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant={viewMode === 'grid' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                className={viewMode === 'grid' ? 'enterprise-button-primary' : 'enterprise-button-secondary'}
+              >
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className={viewMode === 'list' ? 'enterprise-button-primary' : 'enterprise-button-secondary'}
+              >
+                <List className="h-4 w-4" />
               </Button>
             </div>
           </div>
         )}
 
-        {/* Projects Grid */}
-        {!isLoading && projects.length > 0 && (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {projects.map((project) => (
-              <Card key={project.id} className="hover:shadow-md transition-shadow cursor-pointer">
-                <Link href={`/projects/${project.id}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="text-lg line-clamp-2">{project.name}</CardTitle>
-                      <Badge className={`ml-2 ${getStatusColor(project.status)} flex items-center gap-1`}>
-                        {getStatusIcon(project.status)}
-                        {project.status.charAt(0).toUpperCase() + project.status.slice(1)}
+        {/* Projects Grid/List */}
+        {projects.length === 0 ? (
+          <div className="text-center py-16 enterprise-fade-in" style={{ animationDelay: '0.8s' }}>
+            <div className="w-24 h-24 bg-enterprise-surface-elevated rounded-full flex items-center justify-center mx-auto mb-6">
+              <Folder className="h-12 w-12 text-enterprise-text-tertiary" />
+            </div>
+            <h2 className="text-2xl font-semibold text-enterprise-text-primary mb-2">
+              Ready to start your compliance journey?
+            </h2>
+            <p className="text-enterprise-text-secondary mb-8 max-w-md mx-auto">
+              Create your first compliance project to begin tracking your organizational compliance posture across multiple frameworks.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center space-y-3 sm:space-y-0 sm:space-x-4">
+              <Button onClick={handleCreateProject} className="enterprise-button-primary">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Your First Project
+              </Button>
+              <Button onClick={() => router.push('/dashboard')} className="enterprise-button-secondary">
+                <Monitor className="h-4 w-4 mr-2" />
+                Explore Dashboard
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className={`enterprise-fade-in ${
+            viewMode === 'grid'
+              ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'
+              : 'space-y-4'
+          }`} style={{ animationDelay: '0.8s' }}>
+            {projects
+              .filter(project =>
+                project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (project.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map((project, index) => (
+                <div
+                  key={project.id}
+                  className={`enterprise-card cursor-pointer transition-all duration-200 hover:transform hover:-translate-y-1 hover:scale-105 enterprise-stagger-${Math.min(index + 1, 4)}`}
+                  onClick={() => handleProjectClick(project.id)}
+                >
+                  <div className="p-6">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-enterprise-text-primary mb-2">
+                          {project.name}
+                        </h3>
+                        <p className="text-enterprise-text-secondary text-sm line-clamp-2">
+                          {project.description || 'No description provided'}
+                        </p>
+                      </div>
+                      <Badge
+                        variant={getStatusBadgeVariant(project.status)}
+                        className="ml-3"
+                      >
+                        {project.status}
                       </Badge>
                     </div>
-                    {project.description && (
-                      <CardDescription className="line-clamp-2">
-                        {project.description}
-                      </CardDescription>
-                    )}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <div className="flex items-center gap-4">
-                        <span>{project.document_count || 0} documents</span>
-                        {project.framework_count > 0 && (
+
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center space-x-2 text-enterprise-text-tertiary">
+                          <FileText className="h-4 w-4" />
+                          <span>{project.document_count} documents</span>
+                        </div>
+                        <div className="flex items-center space-x-2 text-enterprise-text-tertiary">
+                          <Shield className="h-4 w-4" />
                           <span>{project.framework_count} frameworks</span>
-                        )}
+                        </div>
                       </div>
-                      {project.latest_compliance_score && (
-                        <span className="font-medium text-foreground">
-                          {project.latest_compliance_score}% score
-                        </span>
+
+                      {project.latest_compliance_score > 0 && (
+                        <div>
+                          <div className="flex items-center justify-between text-sm mb-2">
+                            <span className="text-enterprise-text-tertiary">Compliance Score</span>
+                            <span className="text-enterprise-text-primary font-semibold">
+                              {Math.round(project.latest_compliance_score)}%
+                            </span>
+                          </div>
+                          <Progress value={project.latest_compliance_score} className="h-2" />
+                        </div>
                       )}
+
+                      <div className="flex items-center justify-between text-sm text-enterprise-text-tertiary pt-2 border-t border-enterprise-border-secondary">
+                        <div className="flex items-center space-x-2">
+                          <Calendar className="h-4 w-4" />
+                          <span>Updated {new Date(project.updated_at).toLocaleDateString()}</span>
+                        </div>
+                        <ArrowRight className="h-4 w-4" />
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground mt-2">
-                      Updated {new Date(project.updated_at).toLocaleDateString()}
-                    </div>
-                  </CardContent>
-                </Link>
-              </Card>
-            ))}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
-      </main>
 
-      {/* Create Project Dialog */}
-      <CreateProjectDialog
-        isOpen={showCreateProjectDialog}
-        onClose={() => setShowCreateProjectDialog(false)}
-        onSubmit={handleCreateProjectWithUseCase}
-      />
-
-      {/* Legacy Project Form Dialog */}
-      <ProjectForm
-        isOpen={showProjectForm}
-        onClose={() => setShowProjectForm(false)}
-        onSubmit={handleCreateProject}
-      />
-    </div>
+        {/* Create Project Dialog */}
+        <CreateProjectDialog
+          isOpen={isCreateDialogOpen}
+          onClose={() => setIsCreateDialogOpen(false)}
+          onSubmit={handleCreateProjectSubmit}
+        />
+      </div>
+    </EnterpriseLayout>
   );
 }

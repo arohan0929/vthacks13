@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ArrowLeft, Plus } from 'lucide-react';
+import { EnterpriseLayout } from '@/components/enterprise/layout';
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -79,27 +80,28 @@ export default function NewProjectPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-2xl">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.back()}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft size={16} />
-          Back
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">
-            Create New Project
-          </h1>
-          <p className="text-gray-600 mt-2">
-            Start a new compliance assessment project
-          </p>
+    <EnterpriseLayout>
+      <div className="max-w-2xl">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.back()}
+            className="flex items-center gap-2 enterprise-button-secondary"
+          >
+            <ArrowLeft size={16} />
+            Back
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold text-enterprise-text-primary">
+              Create New Project
+            </h1>
+            <p className="text-enterprise-text-secondary mt-2">
+              Start a new compliance assessment project
+            </p>
+          </div>
         </div>
-      </div>
 
       {/* Form */}
       <Card>
@@ -123,7 +125,7 @@ export default function NewProjectPage() {
                 required
                 className="mt-1"
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-enterprise-text-tertiary mt-1">
                 Choose a descriptive name for your project
               </p>
             </div>
@@ -139,7 +141,7 @@ export default function NewProjectPage() {
                 rows={4}
                 className="mt-1"
               />
-              <p className="text-sm text-gray-500 mt-1">
+              <p className="text-sm text-enterprise-text-tertiary mt-1">
                 Provide context about your project to help AI identify relevant compliance frameworks
               </p>
             </div>
@@ -186,21 +188,21 @@ export default function NewProjectPage() {
           <CardTitle className="text-lg">What happens next?</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3 text-sm text-gray-600">
+          <div className="space-y-3 text-sm text-enterprise-text-secondary">
             <div className="flex gap-3">
-              <div className="bg-blue-100 text-blue-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
+              <div className="bg-enterprise-primary/10 text-enterprise-primary rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
                 1
               </div>
               <p>Link your Google Drive documents containing project information</p>
             </div>
             <div className="flex gap-3">
-              <div className="bg-blue-100 text-blue-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
+              <div className="bg-enterprise-primary/10 text-enterprise-primary rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
                 2
               </div>
               <p>AI will analyze your documents and identify applicable compliance frameworks</p>
             </div>
             <div className="flex gap-3">
-              <div className="bg-blue-100 text-blue-600 rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
+              <div className="bg-enterprise-primary/10 text-enterprise-primary rounded-full w-6 h-6 flex items-center justify-center text-xs font-medium">
                 3
               </div>
               <p>Get instant compliance assessment and step-by-step remediation guidance</p>
@@ -208,6 +210,7 @@ export default function NewProjectPage() {
           </div>
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </EnterpriseLayout>
   );
 }

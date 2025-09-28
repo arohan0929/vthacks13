@@ -232,46 +232,46 @@ export function Sidebar({ className }: SidebarProps) {
       )}>
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center px-6 py-6 border-b border-enterprise-border-primary">
-            {isProjectMode ? (
-              <div className="w-full">
-                {/* Project Mode Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <button
-                    onClick={() => clearCurrentProject()}
-                    className="flex items-center space-x-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg p-1"
-                    title="Back to all projects"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    <span className="text-sm">All Projects</span>
-                  </button>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-enterprise-primary/10 rounded-lg flex items-center justify-center">
-                    <FolderOpen className="h-5 w-5 text-enterprise-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <h1 className="text-lg font-bold text-enterprise-text-primary truncate">
-                      {currentProject.name}
-                    </h1>
-                    <p className="text-xs text-enterprise-text-tertiary truncate">
-                      {currentProject.description || 'Project workspace'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center">
-                {/* General Mode Header */}
+          <div className="flex items-center px-6 py-4 border-b border-enterprise-border-primary" style={{ minHeight: '120px' }}>
+            <div className="w-full flex items-center">
+              {/* Always show logo - bigger and more prominent */}
+              <div className="flex items-center justify-center mr-4">
                 <Image
                   src="/complai.svg"
                   alt="Complai"
-                  width={120}
-                  height={48}
-                  className="h-12 w-auto"
+                  width={250}
+                  height={100}
+                  className="w-auto"
+                  style={{ height: '100px' }}
                 />
               </div>
-            )}
+
+              {isProjectMode && (
+                <div className="flex-1 min-w-0">
+                  {/* Project Mode Additional Info */}
+                  <div className="flex items-center justify-between">
+                    <button
+                      onClick={() => clearCurrentProject()}
+                      className="flex items-center space-x-1 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg px-2 py-1"
+                      title="Back to all projects"
+                    >
+                      <ArrowLeft className="h-3 w-3" />
+                      <span className="text-xs">Back</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="w-4 h-4 bg-enterprise-primary/10 rounded flex items-center justify-center">
+                      <FolderOpen className="h-3 w-3 text-enterprise-primary" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h1 className="text-sm font-bold text-enterprise-text-primary truncate">
+                        {currentProject.name}
+                      </h1>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Navigation */}

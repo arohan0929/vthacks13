@@ -159,11 +159,9 @@ export default function ProjectsPage() {
 
   const mockMetrics = {
     totalProjects: projects.length,
-    activeProjects: projects.filter(p => p.status === 'analyzing').length,
+    activeProjects: 1,
     completedProjects: projects.filter(p => p.status === 'completed').length,
-    averageCompliance: projects.length > 0
-      ? Math.round(projects.reduce((acc, p) => acc + (p.latest_compliance_score || 0), 0) / projects.length)
-      : 0,
+    averageCompliance: 70,
     riskScore: 23,
     pendingTasks: 12
   };

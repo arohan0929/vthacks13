@@ -39,3 +39,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Claude Code settings
+.claude/
+
+# Build artifacts
+.next-build/
+
+# Test results and reports
+test-results/
+playwright-report/
+coverage/
+
+# Temporary files
+nul

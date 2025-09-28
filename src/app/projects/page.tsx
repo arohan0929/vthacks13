@@ -7,8 +7,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Folder, FileText, Calendar, TrendingUp, LogOut } from 'lucide-react';
+import { Plus, Folder, FileText, Calendar, TrendingUp, LogOut, Monitor } from 'lucide-react';
 import { ProjectSummary } from '@/lib/db/types';
+import { CreateProjectDialog } from '@/components/create-project-dialog';
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -60,7 +62,59 @@ export default function ProjectsPage() {
   };
 
   const handleCreateProject = () => {
-    router.push('/projects/new');
+    setIsCreateDialogOpen(true);
+  };
+
+  const handleCreateProjectSubmit = async (data: { useCase: string; description?: string }) => {
+    if (!user) {
+      throw new Error('You must be logged in to create a project');
+    }
+
+    try {
+      const token = await user.getIdToken();
+
+      // Generate a project name based on the use case
+      const useCaseNames: Record<string, string> = {
+        'research-labs': 'Research Lab Project',
+        'student-organization': 'Student Organization Project',
+        'university-course': 'University Course Project',
+        'university-admin': 'University Administration Project',
+        'startup': 'Startup Project',
+        'other': 'Custom Project'
+      };
+
+      const projectName = useCaseNames[data.useCase] || 'New Project';
+      const projectDescription = data.description || `Compliance project for ${data.useCase.replace('-', ' ')}`;
+
+      const response = await fetch('/api/projects', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: projectName,
+          description: projectDescription,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create project');
+      }
+
+      const result = await response.json();
+
+      // Close dialog and navigate to the new project's dashboard
+      setIsCreateDialogOpen(false);
+      router.push(`/projects/${result.project.id}`);
+
+      // Refresh the projects list
+      await fetchProjects();
+    } catch (error) {
+      console.error('Error creating project:', error);
+      throw error; // Re-throw to let the dialog handle the error display
+    }
   };
 
   const handleProjectClick = (projectId: string) => {
@@ -159,6 +213,14 @@ export default function ProjectsPage() {
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
+            onClick={() => router.push('/dashboard')}
+            className="flex items-center gap-2"
+          >
+            <Monitor size={18} />
+            Dashboard Demo
+          </Button>
+          <Button
+            variant="outline"
             onClick={handleSignOut}
             className="flex items-center gap-2"
           >
@@ -182,10 +244,20 @@ export default function ProjectsPage() {
           <p className="text-gray-600 mb-6">
             Create your first compliance project to get started
           </p>
-          <Button onClick={handleCreateProject} className="flex items-center gap-2">
-            <Plus size={20} />
-            Create Project
-          </Button>
+          <div className="flex items-center gap-3 justify-center">
+            <Button
+              variant="outline"
+              onClick={() => router.push('/dashboard')}
+              className="flex items-center gap-2"
+            >
+              <Monitor size={20} />
+              View Dashboard Demo
+            </Button>
+            <Button onClick={handleCreateProject} className="flex items-center gap-2">
+              <Plus size={20} />
+              Create Project
+            </Button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -251,6 +323,13 @@ export default function ProjectsPage() {
           ))}
         </div>
       )}
+
+      {/* Create Project Dialog */}
+      <CreateProjectDialog
+        isOpen={isCreateDialogOpen}
+        onClose={() => setIsCreateDialogOpen(false)}
+        onSubmit={handleCreateProjectSubmit}
+      />
     </div>
   );
 }

@@ -120,3 +120,234 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer utilities {
+  /* Custom Utility Classes */
+  .use-case-card {
+    min-width: 320px;
+    max-width: 400px;
+    min-height: 300px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+  }
+
+  .use-case-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  }
+
+  .use-case-card.selected {
+    border-color: rgb(59, 130, 246);
+    background: rgba(59, 130, 246, 0.05);
+  }
+
+  /* Dialog backdrop styling */
+  .dialog-backdrop {
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+  }
+
+  /* Responsive card adjustments */
+  @media (max-width: 1024px) {
+    .use-case-card {
+      min-width: 300px;
+      max-width: 380px;
+      min-height: 290px;
+      padding: 1.375rem;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .use-case-card {
+      min-width: 280px;
+      max-width: 350px;
+      min-height: 280px;
+      padding: 1.25rem;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .use-case-card {
+      min-width: 270px;
+      max-width: 340px;
+      min-height: 270px;
+      padding: 1.125rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .use-case-card {
+      min-width: 260px;
+      max-width: 320px;
+      min-height: 260px;
+      padding: 1rem;
+    }
+  }
+
+  @media (max-width: 375px) {
+    .use-case-card {
+      min-width: 240px;
+      max-width: 300px;
+      min-height: 240px;
+      padding: 0.875rem;
+    }
+  }
+
+  /* Dialog responsive adjustments */
+  @media (max-width: 1024px) {
+    .create-project-dialog {
+      width: 90vw;
+      height: 88vh;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .create-project-dialog {
+      width: 92vw;
+      height: 90vh;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .create-project-dialog {
+      width: 95vw;
+      height: 92vh;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .create-project-dialog {
+      width: 96vw;
+      height: 94vh;
+    }
+  }
+
+  @media (max-width: 375px) {
+    .create-project-dialog {
+      width: 98vw;
+      height: 95vh;
+    }
+  }
+
+  /* Ensure emoji font support */
+  .emoji-text {
+    font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', 'Android Emoji', sans-serif;
+    font-style: normal;
+    font-variant: normal;
+  }
+
+  /* Dashboard tab styling */
+  .dashboard-tabs [data-state="active"] {
+    background: rgb(37, 99, 235);
+    color: white;
+    border-radius: 9999px;
+  }
+
+  .dashboard-tabs [data-state="inactive"] {
+    border-radius: 9999px;
+    background: transparent;
+  }
+
+  .dashboard-tabs [data-state="inactive"]:hover {
+    background: rgb(243, 244, 246);
+  }
+
+  .dashboard-tabs [disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Dashboard responsive adjustments */
+  @media (max-width: 768px) {
+    .dashboard-tabs {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    .dashboard-tabs [role="tab"] {
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+    }
+
+    .dashboard-tabs [role="tab"] svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .dashboard-tabs [role="tab"] {
+      padding: 0.5rem 0.75rem;
+      font-size: 0.8rem;
+    }
+
+    .dashboard-tabs [role="tab"] span:last-child {
+      display: none;
+    }
+  }
+
+  /* Ideate section responsive styling */
+  .ideate-message-bubble {
+    max-width: 85%;
+  }
+
+  @media (max-width: 768px) {
+    .ideate-message-bubble {
+      max-width: 90%;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .ideate-message-bubble {
+      max-width: 95%;
+    }
+  }
+
+  /* Chat input responsive adjustments */
+  .ideate-chat-input {
+    min-height: 44px;
+  }
+
+  @media (max-width: 640px) {
+    .ideate-chat-input {
+      min-height: 40px;
+      font-size: 16px; /* Prevents zoom on iOS */
+    }
+  }
+
+  /* Question card mobile optimization */
+  .ideate-question-card {
+    margin-bottom: 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .ideate-question-card {
+      margin-bottom: 0.875rem;
+    }
+
+    .ideate-question-card .answer-button {
+      padding: 0.625rem 0.875rem;
+      font-size: 0.875rem;
+    }
+  }
+
+  /* Research panel mobile styling */
+  .ideate-research-panel {
+    margin-bottom: 1rem;
+  }
+
+  @media (max-width: 640px) {
+    .ideate-research-panel {
+      margin-bottom: 0.875rem;
+    }
+
+    .ideate-research-panel .research-item {
+      padding: 0.75rem;
+    }
+  }
+}

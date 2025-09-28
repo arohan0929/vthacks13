@@ -63,12 +63,18 @@ interface GoogleDrivePickerProps {
   onSelectFile: (fileId: string) => Promise<void>;
   selectedFiles?: string[];
   disabled?: boolean;
+  variant?: 'button' | 'link';
+  preferFolders?: boolean;
+  selectionMode?: 'folders' | 'files' | 'both';
 }
 
 export function GoogleDrivePicker({
   onSelectFile,
   selectedFiles = [],
-  disabled = false
+  disabled = false,
+  variant = 'button',
+  preferFolders = false,
+  selectionMode = 'both'
 }: GoogleDrivePickerProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,15 +145,35 @@ export function GoogleDrivePicker({
       }
 
       // Create picker
-      const picker = new window.google.picker.PickerBuilder()
+      const pickerBuilder = new window.google.picker.PickerBuilder()
         .enableFeature(window.google.picker.Feature.NAV_HIDDEN)
         .enableFeature(window.google.picker.Feature.MULTISELECT_ENABLED)
-        .setOAuthToken(accessToken)
-        .addView(window.google.picker.ViewId.DOCS)
-        .addView(window.google.picker.ViewId.SPREADSHEETS)
-        .addView(window.google.picker.ViewId.PRESENTATIONS)
-        .addView(window.google.picker.ViewId.PDFS)
-        .addView(window.google.picker.ViewId.FOLDERS)
+        .setOAuthToken(accessToken);
+
+      // Add views based on selection mode and preference
+      if (selectionMode === 'folders' || (preferFolders && selectionMode === 'both')) {
+        pickerBuilder.addView(window.google.picker.ViewId.FOLDERS);
+        if (selectionMode === 'both') {
+          pickerBuilder.addView(window.google.picker.ViewId.DOCS);
+          pickerBuilder.addView(window.google.picker.ViewId.PDFS);
+          pickerBuilder.addView(window.google.picker.ViewId.SPREADSHEETS);
+          pickerBuilder.addView(window.google.picker.ViewId.PRESENTATIONS);
+        }
+      } else if (selectionMode === 'files') {
+        pickerBuilder.addView(window.google.picker.ViewId.DOCS);
+        pickerBuilder.addView(window.google.picker.ViewId.PDFS);
+        pickerBuilder.addView(window.google.picker.ViewId.SPREADSHEETS);
+        pickerBuilder.addView(window.google.picker.ViewId.PRESENTATIONS);
+      } else {
+        // 'both' mode - prioritize files but include folders
+        pickerBuilder.addView(window.google.picker.ViewId.DOCS);
+        pickerBuilder.addView(window.google.picker.ViewId.PDFS);
+        pickerBuilder.addView(window.google.picker.ViewId.SPREADSHEETS);
+        pickerBuilder.addView(window.google.picker.ViewId.PRESENTATIONS);
+        pickerBuilder.addView(window.google.picker.ViewId.FOLDERS);
+      }
+
+      const picker = pickerBuilder
         .setCallback(pickerCallback)
         .setOrigin(window.location.protocol + '//' + window.location.host)
         .setSize(1051, 650)
@@ -162,6 +188,39 @@ export function GoogleDrivePicker({
     }
   };
 
+  const getButtonText = () => {
+    if (isLoading) return 'Opening Google Drive...';
+    if (!isGapiLoaded) return 'Loading Google APIs...';
+
+    if (selectionMode === 'folders') return 'Select Folder from Google Drive';
+    if (selectionMode === 'files') return 'Select Files from Google Drive';
+    if (preferFolders) return 'Select Folder from Google Drive';
+    return 'Select from Google Drive';
+  };
+
+  const buttonText = getButtonText();
+
+  if (variant === 'link') {
+    return (
+      <div className="space-y-2">
+        <button
+          onClick={showPicker}
+          disabled={disabled || isLoading || !isGapiLoaded}
+          className="text-sm text-blue-600 hover:text-blue-700 underline disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {buttonText.replace('Select', 'Upload')}
+        </button>
+
+        {error && (
+          <Alert variant="destructive">
+            <AlertTriangle size={16} />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-2">
       <Button
@@ -170,12 +229,7 @@ export function GoogleDrivePicker({
         className="w-full"
       >
         <FileText className="mr-2 h-4 w-4" />
-        {isLoading
-          ? 'Opening Google Drive...'
-          : !isGapiLoaded
-          ? 'Loading Google APIs...'
-          : 'Select from Google Drive'
-        }
+        {buttonText}
       </Button>
 
       {error && (
@@ -187,7 +241,7 @@ export function GoogleDrivePicker({
 
       {selectedFiles.length > 0 && (
         <div className="text-sm text-gray-600">
-          {selectedFiles.length} file{selectedFiles.length !== 1 ? 's' : ''} already linked
+          {selectedFiles.length} item{selectedFiles.length !== 1 ? 's' : ''} already linked
         </div>
       )}
     </div>

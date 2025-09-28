@@ -1,35 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getProjectsService } from '@/lib/db/projects-service';
 import { getDocumentsService } from '@/lib/db/documents-service';
 import { getDriveService } from '@/lib/google-drive/drive-service';
-
-// Helper function to verify Firebase token and get user
-async function verifyTokenAndGetUser(authHeader: string | null) {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw new Error('Missing or invalid authorization header');
-  }
-
-  const idToken = authHeader.split('Bearer ')[1];
-  const admin = await import('firebase-admin');
-
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const projectsService = getProjectsService();
-
-    let user = await projectsService.getUserByFirebaseId(decodedToken.uid);
-    if (!user) {
-      user = await projectsService.createUser({
-        firebase_uid: decodedToken.uid,
-        email: decodedToken.email || '',
-        name: decodedToken.name,
-      });
-    }
-
-    return user;
-  } catch (error) {
-    throw new Error('Invalid token');
-  }
-}
+import { verifyProjectOwnership, verifyTokenAndGetUser } from '@/lib/auth/auth-service';
 
 // GET /api/projects/[id]/documents - Get all documents for a project
 export async function GET(
@@ -37,20 +9,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await verifyTokenAndGetUser(request.headers.get('authorization'));
     const { id: projectId } = await params;
 
-    const projectsService = getProjectsService();
-    const documentsService = getDocumentsService();
+    // Verify authentication and project ownership
+    const user = await verifyProjectOwnership(request.headers.get('authorization'), projectId);
 
-    // Verify project ownership
-    const isOwner = await projectsService.isProjectOwner(projectId, user.id);
-    if (!isOwner) {
-      return NextResponse.json(
-        { error: 'Project not found or access denied' },
-        { status: 404 }
-      );
-    }
+    const documentsService = getDocumentsService();
 
     // Get documents for the project
     const documents = await documentsService.getDocumentsByProjectId(projectId);
@@ -65,15 +29,24 @@ export async function GET(
   } catch (error) {
     console.error('Error in GET /api/projects/[id]/documents:', error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (error.message.includes('token') || error.message.includes('Invalid') || error.message.includes('authorization')) {
+        return NextResponse.json(
+          { error: 'Authentication failed. Please sign out and sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes('access denied') || error.message.includes('not found')) {
+        return NextResponse.json(
+          { error: 'Project not found or access denied' },
+          { status: 404 }
+        );
+      }
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to fetch documents. Please try again.' },
       { status: 500 }
     );
   }
@@ -85,20 +58,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await verifyTokenAndGetUser(request.headers.get('authorization'));
     const { id: projectId } = await params;
 
-    const projectsService = getProjectsService();
-    const documentsService = getDocumentsService();
+    // Verify authentication and project ownership
+    const user = await verifyProjectOwnership(request.headers.get('authorization'), projectId);
 
-    // Verify project ownership
-    const isOwner = await projectsService.isProjectOwner(projectId, user.id);
-    if (!isOwner) {
-      return NextResponse.json(
-        { error: 'Project not found or access denied' },
-        { status: 404 }
-      );
-    }
+    const documentsService = getDocumentsService();
 
     // Parse request body
     const body = await request.json();
@@ -120,8 +85,17 @@ export async function POST(
       );
     }
 
+    // Get Google OAuth token from request headers
+    const googleToken = request.headers.get('x-google-token');
+    if (!googleToken) {
+      return NextResponse.json(
+        { error: 'Google OAuth token is required' },
+        { status: 400 }
+      );
+    }
+
     // Get file metadata from Google Drive
-    const driveService = await getDriveService();
+    const driveService = await getDriveService(googleToken);
     let driveFile;
 
     try {
@@ -133,6 +107,59 @@ export async function POST(
       );
     }
 
+    // Check if the selected item is a folder
+    if (driveFile.mimeType === 'application/vnd.google-apps.folder') {
+      // Handle folder selection - add all files in the folder
+      try {
+        const folderFiles = await driveService.listFiles(driveFileId, 100);
+        const createdDocuments = [];
+
+        for (const file of folderFiles) {
+          // Skip subfolders to avoid complexity
+          if (file.mimeType === 'application/vnd.google-apps.folder') {
+            continue;
+          }
+
+          // Check if file is already linked to any project
+          const existingDoc = await documentsService.getDocumentByDriveFileId(file.id);
+          if (existingDoc) {
+            continue; // Skip files already linked
+          }
+
+          // Create document record for each file
+          const document = await documentsService.createDocument({
+            project_id: projectId,
+            drive_file_id: file.id,
+            file_name: file.name,
+            file_type: file.mimeType?.split('/')[1] || 'unknown',
+            mime_type: file.mimeType,
+            drive_url: file.webViewLink,
+            parent_folder_id: driveFileId, // Use the folder ID as parent
+            last_modified: file.modifiedTime ? new Date(file.modifiedTime) : null,
+            file_size: file.size ? parseInt(file.size) : null,
+          });
+
+          createdDocuments.push(document);
+        }
+
+        return NextResponse.json({
+          documents: createdDocuments,
+          folderName: driveFile.name,
+          totalFiles: folderFiles.length,
+          addedFiles: createdDocuments.length,
+          skippedFiles: folderFiles.length - createdDocuments.length
+        }, { status: 201 });
+
+      } catch (error) {
+        console.error('Error processing folder contents:', error);
+        return NextResponse.json(
+          { error: 'Failed to process folder contents' },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Handle individual file selection (existing logic)
     // Create document record
     const document = await documentsService.createDocument({
       project_id: projectId,
@@ -150,15 +177,38 @@ export async function POST(
   } catch (error) {
     console.error('Error in POST /api/projects/[id]/documents:', error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (error.message.includes('token') || error.message.includes('Invalid') || error.message.includes('authorization')) {
+        return NextResponse.json(
+          { error: 'Authentication failed. Please sign out and sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes('access denied') || error.message.includes('not found')) {
+        return NextResponse.json(
+          { error: 'Project not found or access denied' },
+          { status: 404 }
+        );
+      }
+
+      if (error.message.includes('already linked')) {
+        return NextResponse.json(
+          { error: 'Document is already linked to a project' },
+          { status: 409 }
+        );
+      }
+
+      if (error.message.includes('Drive') || error.message.includes('Google')) {
+        return NextResponse.json(
+          { error: 'Failed to access Google Drive. Please check your permissions and try again.' },
+          { status: 400 }
+        );
+      }
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to link document. Please try again.' },
       { status: 500 }
     );
   }
@@ -170,20 +220,12 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const user = await verifyTokenAndGetUser(request.headers.get('authorization'));
     const { id: projectId } = await params;
 
-    const projectsService = getProjectsService();
-    const documentsService = getDocumentsService();
+    // Verify authentication and project ownership
+    const user = await verifyProjectOwnership(request.headers.get('authorization'), projectId);
 
-    // Verify project ownership
-    const isOwner = await projectsService.isProjectOwner(projectId, user.id);
-    if (!isOwner) {
-      return NextResponse.json(
-        { error: 'Project not found or access denied' },
-        { status: 404 }
-      );
-    }
+    const documentsService = getDocumentsService();
 
     // Parse request body
     const body = await request.json();
@@ -225,15 +267,24 @@ export async function DELETE(
   } catch (error) {
     console.error('Error in DELETE /api/projects/[id]/documents:', error);
 
-    if (error instanceof Error && error.message.includes('token')) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 401 }
-      );
+    if (error instanceof Error) {
+      if (error.message.includes('token') || error.message.includes('Invalid') || error.message.includes('authorization')) {
+        return NextResponse.json(
+          { error: 'Authentication failed. Please sign out and sign in again.' },
+          { status: 401 }
+        );
+      }
+
+      if (error.message.includes('access denied') || error.message.includes('not found')) {
+        return NextResponse.json(
+          { error: 'Project not found or access denied' },
+          { status: 404 }
+        );
+      }
     }
 
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Failed to remove document. Please try again.' },
       { status: 500 }
     );
   }

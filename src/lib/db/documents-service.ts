@@ -2,7 +2,10 @@ import { sql } from './neon-client';
 import {
   Document,
   CreateDocumentDTO,
-  UpdateDocumentDTO
+  UpdateDocumentDTO,
+  StarredDocument,
+  CreateStarredDocumentDTO,
+  DocumentWithStarred
 } from './types';
 
 export class DocumentsService {
@@ -302,6 +305,84 @@ export class DocumentsService {
       };
     } catch (error) {
       console.error('Error getting document stats:', error);
+      throw error;
+    }
+  }
+
+  // Star a document
+  async starDocument(starData: CreateStarredDocumentDTO): Promise<StarredDocument> {
+    try {
+      const result = await sql`
+        INSERT INTO starred_documents (project_id, document_id)
+        VALUES (${starData.project_id}, ${starData.document_id})
+        ON CONFLICT (project_id, document_id) DO NOTHING
+        RETURNING *
+      `;
+
+      if (result.length === 0) {
+        // If no insert happened due to conflict, get the existing record
+        const existing = await sql`
+          SELECT * FROM starred_documents
+          WHERE project_id = ${starData.project_id} AND document_id = ${starData.document_id}
+        `;
+        return existing[0] as StarredDocument;
+      }
+
+      return result[0] as StarredDocument;
+    } catch (error) {
+      console.error('Error starring document:', error);
+      throw error;
+    }
+  }
+
+  // Unstar a document
+  async unstarDocument(projectId: string, documentId: string): Promise<boolean> {
+    try {
+      const result = await sql`
+        DELETE FROM starred_documents
+        WHERE project_id = ${projectId} AND document_id = ${documentId}
+      `;
+
+      return result.count > 0;
+    } catch (error) {
+      console.error('Error unstarring document:', error);
+      throw error;
+    }
+  }
+
+  // Get starred documents for a project
+  async getStarredDocumentsByProjectId(projectId: string): Promise<StarredDocument[]> {
+    try {
+      const result = await sql`
+        SELECT * FROM starred_documents
+        WHERE project_id = ${projectId}
+        ORDER BY starred_at DESC
+      `;
+
+      return result as StarredDocument[];
+    } catch (error) {
+      console.error('Error getting starred documents:', error);
+      throw error;
+    }
+  }
+
+  // Get documents with starred status for a project
+  async getDocumentsWithStarredStatus(projectId: string): Promise<DocumentWithStarred[]> {
+    try {
+      const result = await sql`
+        SELECT
+          d.*,
+          CASE WHEN sd.id IS NOT NULL THEN true ELSE false END as is_starred,
+          sd.starred_at
+        FROM documents d
+        LEFT JOIN starred_documents sd ON d.id = sd.document_id AND sd.project_id = ${projectId}
+        WHERE d.project_id = ${projectId}
+        ORDER BY d.created_at DESC
+      `;
+
+      return result as DocumentWithStarred[];
+    } catch (error) {
+      console.error('Error getting documents with starred status:', error);
       throw error;
     }
   }

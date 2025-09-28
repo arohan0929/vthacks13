@@ -7,15 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { ProjectForm } from "@/components/processor/project-form";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Plus, FileText, Target, BarChart3, Clock, User, LogOut } from "lucide-react";
+import { Plus, FileText, Target, BarChart3, Clock, User, LogOut, Monitor } from "lucide-react";
 
 export default function Home() {
   const { user, loading, signOut } = useAuthStore();
   const { projects, isLoading, fetchProjects, createProject } = useProjectsStore();
   const [showProjectForm, setShowProjectForm] = useState(false);
+  const [showCreateProjectDialog, setShowCreateProjectDialog] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -69,6 +71,45 @@ export default function Home() {
       console.error("Failed to create project:", error);
       toast.error("Failed to create project. Please try again.");
       throw error; // Re-throw to let the form handle the error state
+    }
+  };
+
+  const handleCreateProjectWithUseCase = async (data: { useCase: string; description?: string }) => {
+    try {
+      // For use case selection, we'll create a project with a generated name based on use case
+      const useCaseNames: Record<string, string> = {
+        'research-labs': 'Research Lab Compliance Project',
+        'student-organization': 'Student Organization Project',
+        'university-course': 'Course Project',
+        'university-admin': 'University Administration Project',
+        'startup': 'Startup Compliance Project',
+        'other': 'Custom Project'
+      };
+
+      let projectName = useCaseNames[data.useCase] || 'New Project';
+      let projectDescription = data.description || `Compliance project for ${data.useCase}`;
+
+      // For "other" projects, the description comes formatted as "title: description"
+      if (data.useCase === 'other' && data.description) {
+        const parts = data.description.split(': ');
+        if (parts.length >= 2) {
+          projectName = parts[0];
+          projectDescription = parts.slice(1).join(': ');
+        }
+      }
+
+      await createProject({
+        user_id: '', // This will be ignored by the API - user_id comes from token
+        name: projectName,
+        description: projectDescription,
+        use_case: data.useCase,
+      });
+
+      toast.success("Project created successfully!");
+    } catch (error) {
+      console.error("Failed to create project:", error);
+      toast.error("Failed to create project. Please try again.");
+      throw error;
     }
   };
 
@@ -146,10 +187,18 @@ export default function Home() {
               Manage your compliance projects and analyze documents
             </p>
           </div>
-          <Button onClick={() => setShowProjectForm(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Project
-          </Button>
+          <div className="flex items-center gap-3">
+            <Link href="/dashboard">
+              <Button variant="outline" className="gap-2">
+                <Monitor className="h-4 w-4" />
+                Dashboard Demo
+              </Button>
+            </Link>
+            <Button onClick={() => setShowCreateProjectDialog(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create Project
+            </Button>
+          </div>
         </div>
 
         {/* Projects Loading State */}
@@ -180,10 +229,18 @@ export default function Home() {
             <p className="text-muted-foreground mb-6">
               Create your first project to get started with compliance analysis
             </p>
-            <Button onClick={() => setShowProjectForm(true)} size="lg" className="gap-2">
-              <Plus className="h-5 w-5" />
-              Create Your First Project
-            </Button>
+            <div className="flex items-center gap-3 justify-center">
+              <Link href="/dashboard">
+                <Button variant="outline" size="lg" className="gap-2">
+                  <Monitor className="h-5 w-5" />
+                  View Dashboard Demo
+                </Button>
+              </Link>
+              <Button onClick={() => setShowCreateProjectDialog(true)} size="lg" className="gap-2">
+                <Plus className="h-5 w-5" />
+                Create Your First Project
+              </Button>
+            </div>
           </div>
         )}
 
@@ -232,7 +289,14 @@ export default function Home() {
         )}
       </main>
 
-      {/* Project Form Dialog */}
+      {/* Create Project Dialog */}
+      <CreateProjectDialog
+        isOpen={showCreateProjectDialog}
+        onClose={() => setShowCreateProjectDialog(false)}
+        onSubmit={handleCreateProjectWithUseCase}
+      />
+
+      {/* Legacy Project Form Dialog */}
       <ProjectForm
         isOpen={showProjectForm}
         onClose={() => setShowProjectForm(false)}

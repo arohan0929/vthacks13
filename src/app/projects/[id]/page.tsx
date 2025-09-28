@@ -11,14 +11,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
-  ArrowLeft,
   FileText,
   Shield,
   ExternalLink,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Lightbulb,
+  Folder
 } from 'lucide-react';
 import { GoogleDrivePicker } from '@/components/processor/google-drive-picker';
+import { Navbar } from '@/components/navigation/navbar';
+import { SourcesUpload } from '@/components/dashboard/sources-upload';
+import { IdeateSection } from '@/components/dashboard/ideate/ideate-section';
+import { CompliancePlaceholder } from '@/components/dashboard/compliance-placeholder';
 import { Project, Document } from '@/lib/db/types';
 
 interface ProjectData {
@@ -52,7 +57,8 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const [projectData, setProjectData] = useState<ProjectData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('sources');
+  const [hasUploadedSources, setHasUploadedSources] = useState(false);
 
   useEffect(() => {
     // Only redirect if auth is fully initialized and confirmed no user
@@ -93,6 +99,7 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       const data = await response.json();
       setProjectData(data);
+      setHasUploadedSources(data.documents && data.documents.length > 0);
     } catch (error) {
       console.error('Error fetching project:', error);
       setError(error instanceof Error ? error.message : 'Failed to load project');
@@ -109,10 +116,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
       const token = await user?.getIdToken();
       if (!token) throw new Error('No authentication token');
 
+      // Get Google OAuth token for Drive access
+      const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+      const googleToken = await getDriveAccessToken();
+      if (!googleToken) throw new Error('No Google Drive access token available');
+
       const response = await fetch(`/api/projects/${id}/documents`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'X-Google-Token': googleToken,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ driveFileId: fileId }),
@@ -125,6 +138,9 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
 
       // Refresh project data to show new document
       await fetchProjectData();
+
+      // Update sources uploaded state
+      setHasUploadedSources(true);
     } catch (error) {
       console.error('Error linking document:', error);
       setError(error instanceof Error ? error.message : 'Failed to link document');
@@ -273,19 +289,13 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
   const { project, documents, compliance, stats } = projectData;
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-8">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/projects')}
-          className="flex items-center gap-2"
-        >
-          <ArrowLeft size={16} />
-          Projects
-        </Button>
-        <div className="flex-1">
+    <div className="min-h-screen bg-gray-50">
+      {/* Navbar */}
+      <Navbar projectName={project.name} />
+
+      <div className="container mx-auto px-4 py-8">
+        {/* Project Header */}
+        <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
             <Badge variant={getStatusBadgeVariant(project.status)}>
@@ -296,304 +306,82 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
             {project.description || 'No description provided'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button
-            onClick={handleSyncDocuments}
-            variant="ghost"
-            size="sm"
-            disabled={isSyncing || documents.length === 0}
-            className="flex items-center gap-2"
-          >
-            <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />
-            {isSyncing ? 'Syncing...' : 'Sync'}
-          </Button>
-          <GoogleDrivePicker
-            onSelectFile={handleSelectDriveFile}
-            selectedFiles={documents.map(doc => doc.drive_file_id)}
-            disabled={isAnalyzing}
-          />
-          <Button
-            onClick={handleAnalyzeProject}
-            disabled={isAnalyzing || documents.length === 0}
-            className="flex items-center gap-2"
-          >
-            {isAnalyzing ? (
-              <>
-                <RefreshCw size={16} className="animate-spin" />
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <Shield size={16} />
-                Analyze
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Documents</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.documentCount}</div>
-          </CardContent>
-        </Card>
+        {/* Dashboard Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="dashboard-tabs grid w-full grid-cols-3 max-w-2xl mx-auto mb-8 h-12 p-1">
+            <TabsTrigger
+              value="sources"
+              className="flex items-center gap-2 h-10 px-6 transition-all duration-200"
+            >
+              <Folder size={18} />
+              <span>Sources</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="ideate"
+              disabled={!hasUploadedSources}
+              className="flex items-center gap-2 h-10 px-6 transition-all duration-200"
+            >
+              <Lightbulb size={18} />
+              <span>Ideate</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="compliance-report"
+              disabled={!hasUploadedSources}
+              className="flex items-center gap-2 h-10 px-6 transition-all duration-200"
+            >
+              <Shield size={18} />
+              <span>Compliance Report</span>
+            </TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Frameworks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{compliance.totalFrameworks}</div>
-          </CardContent>
-        </Card>
+          {/* Sources Tab */}
+          <TabsContent value="sources" className="mt-6">
+            <SourcesUpload
+              projectId={id}
+              onFolderSelected={handleSelectDriveFile}
+              hasUploadedSources={hasUploadedSources}
+              selectedFiles={documents.map(doc => doc.drive_file_id)}
+              selectedFolders={Array.from(new Set(documents.map(doc => doc.parent_folder_id).filter(Boolean)))}
+              disabled={isAnalyzing}
+            />
+          </TabsContent>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">Compliance Score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {compliance.averageScore > 0 ? `${Math.round(compliance.averageScore)}%` : 'N/A'}
-            </div>
-          </CardContent>
-        </Card>
+          {/* Ideate Tab */}
+          <TabsContent value="ideate" className="mt-6">
+            <IdeateSection isLocked={!hasUploadedSources} />
+          </TabsContent>
 
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-gray-600">High Priority Gaps</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-red-600">{compliance.highPriorityGaps}</div>
-          </CardContent>
-        </Card>
-      </div>
+          {/* Compliance Report Tab */}
+          <TabsContent value="compliance-report" className="mt-6">
+            <CompliancePlaceholder isLocked={!hasUploadedSources} />
+          </TabsContent>
+        </Tabs>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
-            <FileText size={16} />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="flex items-center gap-2">
-            <FileText size={16} />
-            Documents
-          </TabsTrigger>
-          <TabsTrigger value="compliance" className="flex items-center gap-2">
-            <Shield size={16} />
-            Compliance
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Overview Tab */}
-        <TabsContent value="overview" className="mt-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Project Information */}
+        {/* Sources Menu Placeholder */}
+        {hasUploadedSources && (
+          <div className="mt-12">
             <Card>
               <CardHeader>
-                <CardTitle>Project Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Created</label>
-                  <p className="text-gray-900">
-                    {new Date(project.created_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Last Updated</label>
-                  <p className="text-gray-900">
-                    {new Date(project.updated_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Status</label>
-                  <p className="text-gray-900 capitalize">{project.status}</p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recent Activity */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
+                <CardTitle className="text-lg">Sources Menu</CardTitle>
+                <CardDescription>
+                  Connected Google Drive folders and documents
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                {compliance.lastAssessmentDate ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Shield size={16} className="text-blue-600" />
-                      <span>Last compliance assessment</span>
-                      <span className="text-gray-500">
-                        {new Date(compliance.lastAssessmentDate).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    <AlertTriangle size={32} className="mx-auto mb-2" />
-                    <p>No activity yet</p>
-                    <p className="text-sm">Link documents and run analysis to get started</p>
-                  </div>
-                )}
+                <div className="text-gray-500 text-center py-4">
+                  <p className="text-sm">Connected sources will be displayed here</p>
+                  {documents.length > 0 && (
+                    <p className="text-xs mt-1">
+                      {documents.length} document{documents.length !== 1 ? 's' : ''} currently linked
+                    </p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-
-        {/* Documents Tab */}
-        <TabsContent value="documents" className="mt-6">
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Linked Documents</CardTitle>
-                  <CardDescription>
-                    Google Drive files linked to this project
-                  </CardDescription>
-                </div>
-                <GoogleDrivePicker
-                  onSelectFile={handleSelectDriveFile}
-                  selectedFiles={documents.map(doc => doc.drive_file_id)}
-                />
-              </div>
-            </CardHeader>
-            <CardContent>
-              {documents.length === 0 ? (
-                <div className="text-center py-12">
-                  <FileText size={48} className="mx-auto text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    No documents linked
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Link Google Drive documents to analyze compliance requirements
-                  </p>
-                  <GoogleDrivePicker
-                    onSelectFile={handleSelectDriveFile}
-                    selectedFiles={documents.map(doc => doc.drive_file_id)}
-                  />
-                </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Last Modified</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[100px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {documents.map((doc) => (
-                      <TableRow key={doc.id}>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <FileText size={16} className="text-blue-600" />
-                            <span className="font-medium">{doc.file_name}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">{doc.file_type}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          {doc.last_modified
-                            ? new Date(doc.last_modified).toLocaleDateString()
-                            : 'Unknown'
-                          }
-                        </TableCell>
-                        <TableCell>
-                          {doc.last_analyzed ? (
-                            <Badge variant="secondary">Analyzed</Badge>
-                          ) : (
-                            <Badge variant="outline">Pending</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => window.open(doc.drive_url || '', '_blank')}
-                          >
-                            <ExternalLink size={14} />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Compliance Tab */}
-        <TabsContent value="compliance" className="mt-6">
-          <div className="space-y-6">
-            {compliance.totalFrameworks === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Shield size={48} className="mx-auto text-gray-400 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">
-                    No compliance frameworks detected
-                  </h3>
-                  <p className="text-gray-600 mb-4">
-                    Link documents and run analysis to identify applicable compliance frameworks
-                  </p>
-                  <Button onClick={handleAnalyzeProject} className="flex items-center gap-2">
-                    <Shield size={16} />
-                    Start Analysis
-                  </Button>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {compliance.frameworks.map((framework) => (
-                  <Card key={framework.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="text-lg">{framework.name}</CardTitle>
-                          <CardDescription>
-                            Confidence: {Math.round(framework.confidence * 100)}%
-                          </CardDescription>
-                        </div>
-                        {framework.score !== undefined && (
-                          <Badge variant="secondary">
-                            {Math.round(framework.score)}% complete
-                          </Badge>
-                        )}
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      {framework.score !== undefined && (
-                        <div className="mb-4">
-                          <div className="flex justify-between text-sm mb-1">
-                            <span>Compliance Score</span>
-                            <span>{Math.round(framework.score)}%</span>
-                          </div>
-                          <Progress value={framework.score} className="h-2" />
-                        </div>
-                      )}
-                      <div className="flex justify-between text-sm text-gray-600">
-                        <span>Gaps to address:</span>
-                        <span>{framework.gapCount}</span>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        </TabsContent>
-      </Tabs>
-
-      {/* Google Drive Picker - Now inline in the UI where needed */}
+        )}
+      </div>
     </div>
   );
 }

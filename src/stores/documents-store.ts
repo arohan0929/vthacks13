@@ -169,7 +169,8 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 
       // Get authentication tokens
       const authToken = await getAuthToken();
-      const oauthToken = await getGoogleAccessToken();
+      const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+      const oauthToken = await getDriveAccessToken();
 
       // Validate that we have required tokens
       if (!authToken) {

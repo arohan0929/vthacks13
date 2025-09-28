@@ -23,16 +23,6 @@ export function IdeateSection({ isLocked }: IdeateSectionProps) {
 
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mock data for demonstration - replace with real API calls
-  const mockQuestions: Question[] = [
-    {
-      id: '1',
-      text: 'What type of compliance framework are you most interested in analyzing?',
-      type: 'multiple-choice',
-      options: ['GDPR', 'HIPAA', 'SOX', 'ISO 27001', 'CCPA'],
-      timestamp: new Date()
-    }
-  ];
 
   const handleQAAnswer = useCallback((questionId: string, answer: string) => {
     setState(prev => ({
@@ -138,8 +128,8 @@ export function IdeateSection({ isLocked }: IdeateSectionProps) {
     }));
   }, []);
 
-  // Initialize with mock data if not locked and no questions exist
-  const questions = state.qaThread.length === 0 && !isLocked ? mockQuestions : state.qaThread;
+  // Use questions from state - backend will provide questions when ready
+  const questions = state.qaThread;
 
   return (
     <Card className="min-h-[600px]">

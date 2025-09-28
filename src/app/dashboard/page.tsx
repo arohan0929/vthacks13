@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Navbar } from '@/components/navigation/navbar';
 import { SourcesUpload } from '@/components/dashboard/sources-upload';
-import { IdeatePlaceholder } from '@/components/dashboard/ideate-placeholder';
+import { IdeateSection } from '@/components/dashboard/ideate/ideate-section';
 import { CompliancePlaceholder } from '@/components/dashboard/compliance-placeholder';
 
 export default function DashboardPage() {
@@ -120,7 +120,7 @@ export default function DashboardPage() {
 
           {/* Ideate Tab */}
           <TabsContent value="ideate" className="mt-6">
-            <IdeatePlaceholder isLocked={!hasUploadedSources} />
+            <IdeateSection isLocked={!hasUploadedSources} />
           </TabsContent>
 
           {/* Compliance Report Tab */}

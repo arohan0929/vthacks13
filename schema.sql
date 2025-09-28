@@ -71,6 +71,44 @@ CREATE TABLE assessments (
     assessed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Processing jobs table - tracks document processing status
+CREATE TABLE processing_jobs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+    job_type VARCHAR(50) NOT NULL CHECK (job_type IN ('text_extraction', 'chunking', 'embedding', 'analysis')),
+    status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')) DEFAULT 'pending',
+    total_documents INTEGER DEFAULT 0,
+    processed_documents INTEGER DEFAULT 0,
+    total_chunks INTEGER DEFAULT 0,
+    processed_chunks INTEGER DEFAULT 0,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Document chunks table - stores processed document chunks
+CREATE TABLE document_chunks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    tokens INTEGER DEFAULT 0,
+    embedding VECTOR(768), -- For vector similarity search
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(document_id, chunk_index)
+);
+
+-- Starred documents table - user bookmarks for documents
+CREATE TABLE starred_documents (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    starred_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, document_id)
+);
+
 -- Create indexes for performance
 CREATE INDEX idx_users_firebase_uid ON users(firebase_uid);
 CREATE INDEX idx_projects_user_id ON projects(user_id);
@@ -80,6 +118,13 @@ CREATE INDEX idx_documents_drive_file_id ON documents(drive_file_id);
 CREATE INDEX idx_compliance_frameworks_project_id ON compliance_frameworks(project_id);
 CREATE INDEX idx_assessments_project_id ON assessments(project_id);
 CREATE INDEX idx_assessments_framework_id ON assessments(framework_id);
+CREATE INDEX idx_processing_jobs_project_id ON processing_jobs(project_id);
+CREATE INDEX idx_processing_jobs_status ON processing_jobs(status);
+CREATE INDEX idx_processing_jobs_created_at ON processing_jobs(created_at);
+CREATE INDEX idx_document_chunks_document_id ON document_chunks(document_id);
+CREATE INDEX idx_document_chunks_chunk_index ON document_chunks(chunk_index);
+CREATE INDEX idx_starred_documents_project_id ON starred_documents(project_id);
+CREATE INDEX idx_starred_documents_document_id ON starred_documents(document_id);
 
 -- Create a trigger to automatically update the updated_at column for projects
 CREATE OR REPLACE FUNCTION update_updated_at_column()

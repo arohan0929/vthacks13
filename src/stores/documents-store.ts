@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { Document, DriveFileContent } from '@/lib/db/types';
-import { SyncStatus } from '@/components/processor/sync-status';
+import { create } from "zustand";
+import { Document, DriveFileContent } from "@/lib/db/types";
+import { SyncStatus } from "@/components/processor/sync-status";
 
 interface DocumentsState {
   // State
@@ -27,16 +27,15 @@ interface DocumentsState {
 
 // Helper function to get Firebase ID token for user authentication
 async function getAuthToken(): Promise<string> {
-  const { auth } = await import('@/lib/firebase/firebase');
+  const { auth } = await import("@/lib/firebase/firebase");
   const user = auth.currentUser;
 
   if (!user) {
-    throw new Error('No authenticated user');
+    throw new Error("No authenticated user");
   }
 
   return user.getIdToken();
 }
-
 
 export const useDocumentsStore = create<DocumentsState>((set, get) => ({
   // Initial state
@@ -45,7 +44,7 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
   documentContent: null,
   isLoading: false,
   isLoadingContent: false,
-  syncStatus: 'idle',
+  syncStatus: "idle",
   error: null,
   lastSyncTime: null,
 
@@ -57,8 +56,8 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
       const token = await getAuthToken();
       const response = await fetch(`/api/projects/${projectId}/documents`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
@@ -66,16 +65,19 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
         throw new Error(`Failed to fetch documents: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       set({
         documents: data.documents || [],
         isLoading: false,
         lastSyncTime: new Date(),
       });
     } catch (error) {
-      console.error('Error fetching documents:', error);
+      console.error("Error fetching documents:", error);
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch documents',
+        error:
+          error instanceof Error ? error.message : "Failed to fetch documents",
         isLoading: false,
       });
     }
@@ -88,20 +90,24 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 
       const token = await getAuthToken();
       const response = await fetch(`/api/projects/${projectId}/documents`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ driveFileId }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to link document');
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to link document");
       }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       const newDocument = data.document;
 
       // Add to documents list
@@ -112,9 +118,10 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
         lastSyncTime: new Date(),
       });
     } catch (error) {
-      console.error('Error linking document:', error);
+      console.error("Error linking document:", error);
       set({
-        error: error instanceof Error ? error.message : 'Failed to link document',
+        error:
+          error instanceof Error ? error.message : "Failed to link document",
         isLoading: false,
       });
       throw error;
@@ -128,23 +135,26 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 
       const token = await getAuthToken();
       const response = await fetch(`/api/projects/${projectId}/documents`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ documentId }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to unlink document');
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
+        throw new Error(errorData.error || "Failed to unlink document");
       }
 
       // Remove from documents list
       const { documents, selectedDocument } = get();
-      const updatedDocuments = documents.filter(d => d.id !== documentId);
-      const updatedSelectedDocument = selectedDocument?.id === documentId ? null : selectedDocument;
+      const updatedDocuments = documents.filter((d) => d.id !== documentId);
+      const updatedSelectedDocument =
+        selectedDocument?.id === documentId ? null : selectedDocument;
 
       set({
         documents: updatedDocuments,
@@ -153,9 +163,10 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
         lastSyncTime: new Date(),
       });
     } catch (error) {
-      console.error('Error unlinking document:', error);
+      console.error("Error unlinking document:", error);
       set({
-        error: error instanceof Error ? error.message : 'Failed to unlink document',
+        error:
+          error instanceof Error ? error.message : "Failed to unlink document",
         isLoading: false,
       });
       throw error;
@@ -169,38 +180,49 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 
       // Get authentication tokens
       const authToken = await getAuthToken();
-      const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+      const { getDriveAccessToken } = await import("@/lib/firebase/firebase");
       const oauthToken = await getDriveAccessToken();
 
       // Validate that we have required tokens
       if (!authToken) {
-        throw new Error('User authentication required. Please sign in.');
+        throw new Error("User authentication required. Please sign in.");
       }
 
       if (!oauthToken) {
-        throw new Error('Google Drive access not available. Please sign out and sign in again to connect your Google Drive.');
+        throw new Error(
+          "Google Drive access not available. Please sign out and sign in again to connect your Google Drive."
+        );
       }
 
       const response = await fetch(`/api/drive/content/${fileId}`, {
         headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Access-Token': oauthToken,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authToken}`,
+          "X-Google-Access-Token": oauthToken,
+          "Content-Type": "application/json",
         },
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: response.statusText }));
 
         // Handle specific error cases
         if (response.status === 401) {
-          throw new Error('Google Drive access expired. Please sign out and sign in again to reconnect your Google Drive.');
+          throw new Error(
+            "Google Drive access expired. Please sign out and sign in again to reconnect your Google Drive."
+          );
         }
 
-        throw new Error(errorData.error || `Failed to fetch document content: ${response.statusText}`);
+        throw new Error(
+          errorData.error ||
+            `Failed to fetch document content: ${response.statusText}`
+        );
       }
 
-      const content = await response.json();
+      const content = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       set({
         documentContent: content,
         isLoadingContent: false,
@@ -208,9 +230,12 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 
       return content;
     } catch (error) {
-      console.error('Error fetching document content:', error);
+      console.error("Error fetching document content:", error);
       set({
-        error: error instanceof Error ? error.message : 'Failed to fetch document content',
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to fetch document content",
         isLoadingContent: false,
       });
       throw error;
@@ -220,21 +245,24 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
   // Check for document changes since last sync
   checkForChanges: async (projectId: string) => {
     try {
-      set({ syncStatus: 'syncing' });
+      set({ syncStatus: "syncing" });
 
       // This would typically call an API endpoint that checks for changes
       // For now, we'll just refresh the documents
       await get().fetchDocuments(projectId);
 
       set({
-        syncStatus: 'success',
+        syncStatus: "success",
         lastSyncTime: new Date(),
       });
     } catch (error) {
-      console.error('Error checking for changes:', error);
+      console.error("Error checking for changes:", error);
       set({
-        syncStatus: 'error',
-        error: error instanceof Error ? error.message : 'Failed to check for changes',
+        syncStatus: "error",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to check for changes",
       });
     }
   },
@@ -242,16 +270,19 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
   // Refresh documents with sync status tracking
   refreshDocuments: async (projectId: string) => {
     try {
-      set({ syncStatus: 'syncing' });
+      set({ syncStatus: "syncing" });
 
       await get().fetchDocuments(projectId);
 
-      set({ syncStatus: 'success' });
+      set({ syncStatus: "success" });
     } catch (error) {
-      console.error('Error refreshing documents:', error);
+      console.error("Error refreshing documents:", error);
       set({
-        syncStatus: 'error',
-        error: error instanceof Error ? error.message : 'Failed to refresh documents',
+        syncStatus: "error",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to refresh documents",
       });
     }
   },
@@ -277,7 +308,7 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
       documentContent: null,
       isLoading: false,
       isLoadingContent: false,
-      syncStatus: 'idle',
+      syncStatus: "idle",
       error: null,
       lastSyncTime: null,
     });

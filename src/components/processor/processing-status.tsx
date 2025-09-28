@@ -14,35 +14,47 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, CheckCircle, XCircle, Clock, Loader2 } from "lucide-react";
 
 interface ProcessingJob {
-  id: string;
-  project_id: string;
+  job_id: string;
   document_id?: string;
   job_type: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  total_documents: number;
-  processed_documents: number;
-  total_chunks: number;
-  processed_chunks: number;
-  started_at?: string;
-  completed_at?: string;
-  error_message?: string;
-  duration_seconds?: number;
+  progress: {
+    documents: {
+      total: number;
+      processed: number;
+    };
+    chunks: {
+      total: number;
+      processed: number;
+    };
+  };
+  timing: {
+    started_at?: string;
+    completed_at?: string;
+    duration_seconds?: number;
+  };
+  error?: {
+    message: string;
+  };
+  created_at: string;
 }
 
 interface ProcessingStatus {
   project_id: string;
-  is_processing: boolean;
-  processing_progress: number;
-  active_jobs: ProcessingJob[];
-  recent_jobs: ProcessingJob[];
-  stats: {
-    total_documents: number;
-    total_chunks: number;
-    total_tokens: number;
-    avg_chunk_size: number;
-    processed_documents: number;
+  processing_status: {
+    is_processing: boolean;
+    active_jobs: number;
+    progress_percentage: number;
     last_processing_date?: string;
   };
+  statistics: {
+    total_documents: number;
+    processed_documents: number;
+    total_chunks: number;
+    total_tokens: number;
+    average_chunk_size: number;
+  };
+  recent_jobs: ProcessingJob[];
 }
 
 interface ProcessingStatusProps {
@@ -79,7 +91,9 @@ export function ProcessingStatus({
         throw new Error("Failed to fetch processing status");
       }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       setStatus(data);
     } catch (error) {
       console.error("Error fetching processing status:", error);
@@ -96,13 +110,13 @@ export function ProcessingStatus({
 
     // Poll for updates every 5 seconds if there are active jobs
     const interval = setInterval(() => {
-      if (status?.is_processing) {
+      if (status?.processing_status.is_processing) {
         fetchStatus();
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [projectId, authToken, status?.is_processing]);
+  }, [projectId, authToken, status?.processing_status.is_processing]);
 
   const getStatusIcon = (jobStatus: string) => {
     switch (jobStatus) {
@@ -183,7 +197,7 @@ export function ProcessingStatus({
           <div>
             <CardTitle className="flex items-center gap-2">
               Processing Status
-              {status.is_processing && (
+              {status.processing_status.is_processing && (
                 <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
               )}
             </CardTitle>
@@ -201,12 +215,15 @@ export function ProcessingStatus({
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Overall Progress</span>
-            <span>{Math.round(status.processing_progress)}%</span>
+            <span>{status.processing_status.progress_percentage}%</span>
           </div>
-          <Progress value={status.processing_progress} className="h-2" />
+          <Progress
+            value={status.processing_status.progress_percentage}
+            className="h-2"
+          />
           <div className="text-xs text-gray-600">
-            {status.stats.processed_documents} of {status.stats.total_documents}{" "}
-            documents processed
+            {status.statistics.processed_documents} of{" "}
+            {status.statistics.total_documents} documents processed
           </div>
         </div>
 
@@ -215,27 +232,27 @@ export function ProcessingStatus({
           <div>
             <div className="text-gray-600">Total Chunks</div>
             <div className="font-semibold">
-              {status.stats.total_chunks.toLocaleString()}
+              {status.statistics.total_chunks.toLocaleString()}
             </div>
           </div>
           <div>
             <div className="text-gray-600">Total Tokens</div>
             <div className="font-semibold">
-              {status.stats.total_tokens?.toLocaleString() || "N/A"}
+              {status.statistics.total_tokens?.toLocaleString() || "N/A"}
             </div>
           </div>
           <div>
             <div className="text-gray-600">Avg Chunk Size</div>
             <div className="font-semibold">
-              {Math.round(status.stats.avg_chunk_size || 0)} tokens
+              {status.statistics.average_chunk_size} tokens
             </div>
           </div>
           <div>
             <div className="text-gray-600">Last Processed</div>
             <div className="font-semibold">
-              {status.stats.last_processing_date
+              {status.processing_status.last_processing_date
                 ? new Date(
-                    status.stats.last_processing_date
+                    status.processing_status.last_processing_date
                   ).toLocaleDateString()
                 : "Never"}
             </div>
@@ -243,45 +260,59 @@ export function ProcessingStatus({
         </div>
 
         {/* Active Jobs */}
-        {status.active_jobs.length > 0 && (
+        {status.recent_jobs.filter(
+          (job) => job.status === "pending" || job.status === "running"
+        ).length > 0 && (
           <div className="space-y-3">
             <h4 className="font-medium text-sm">Active Processing</h4>
-            {status.active_jobs.map((job) => (
-              <div key={job.id} className="border rounded-lg p-3 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(job.status)}
-                    <span className="text-sm font-medium">
-                      {job.job_type === "full_pipeline"
-                        ? "Document Processing"
-                        : job.job_type}
-                    </span>
-                  </div>
-                  <Badge variant={getStatusBadgeVariant(job.status)}>
-                    {job.status}
-                  </Badge>
-                </div>
-                {job.total_chunks > 0 && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs text-gray-600">
-                      <span>Chunks</span>
-                      <span>
-                        {job.processed_chunks} / {job.total_chunks}
+            {status.recent_jobs
+              .filter(
+                (job) => job.status === "pending" || job.status === "running"
+              )
+              .map((job) => (
+                <div
+                  key={job.job_id}
+                  className="border rounded-lg p-3 space-y-2"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(job.status)}
+                      <span className="text-sm font-medium">
+                        {job.job_type === "full_pipeline"
+                          ? "Document Processing"
+                          : job.job_type}
                       </span>
                     </div>
-                    <Progress
-                      value={(job.processed_chunks / job.total_chunks) * 100}
-                      className="h-1"
-                    />
+                    <Badge variant={getStatusBadgeVariant(job.status)}>
+                      {job.status}
+                    </Badge>
                   </div>
-                )}
-                {job.error_message && (
-                  <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
-                    {job.error_message}
-                  </div>
-                )}
-              </div>
-            ))}
+                  {job.progress.chunks.total > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-gray-600">
+                        <span>Chunks</span>
+                        <span>
+                          {job.progress.chunks.processed} /{" "}
+                          {job.progress.chunks.total}
+                        </span>
+                      </div>
+                      <Progress
+                        value={
+                          (job.progress.chunks.processed /
+                            job.progress.chunks.total) *
+                          100
+                        }
+                        className="h-1"
+                      />
+                    </div>
+                  )}
+                  {job.error && (
+                    <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
+                      {job.error.message}
+                    </div>
+                  )}
+                </div>
+              ))}
           </div>
         )}
 
@@ -292,7 +323,7 @@ export function ProcessingStatus({
             <div className="space-y-2">
               {status.recent_jobs.slice(0, 3).map((job) => (
                 <div
-                  key={job.id}
+                  key={job.job_id}
                   className="flex items-center justify-between text-sm"
                 >
                   <div className="flex items-center gap-2">
@@ -310,9 +341,9 @@ export function ProcessingStatus({
                     >
                       {job.status}
                     </Badge>
-                    {job.duration_seconds && (
+                    {job.timing.duration_seconds && (
                       <span className="text-xs text-gray-500">
-                        {Math.round(job.duration_seconds)}s
+                        {Math.round(job.timing.duration_seconds)}s
                       </span>
                     )}
                   </div>
@@ -323,8 +354,10 @@ export function ProcessingStatus({
         )}
 
         {/* No Processing Message */}
-        {!status.is_processing &&
-          status.active_jobs.length === 0 &&
+        {!status.processing_status.is_processing &&
+          status.recent_jobs.filter(
+            (job) => job.status === "pending" || job.status === "running"
+          ).length === 0 &&
           status.recent_jobs.length === 0 && (
             <div className="text-center py-4 text-gray-500">
               <p className="text-sm">No processing activity yet</p>

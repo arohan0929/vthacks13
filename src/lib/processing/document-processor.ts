@@ -95,7 +95,20 @@ export class DocumentProcessor {
         "Extracting document content from Google Drive"
       );
       const driveService = await getDriveService(oauthToken);
+
+      console.log(`Starting content extraction for file: ${driveFileId}`);
       const fileContent = await driveService.getFileContent(driveFileId);
+
+      // Validate extracted content
+      if (!fileContent.content || fileContent.content.trim().length === 0) {
+        throw new Error(
+          "No content could be extracted from the document. The file may be empty, corrupted, or in an unsupported format."
+        );
+      }
+
+      console.log(
+        `Successfully extracted ${fileContent.content.length} characters from document`
+      );
 
       // Step 2: Store/update document metadata
       await this.updateJobProgress(jobId, "Updating document metadata");
@@ -210,12 +223,35 @@ export class DocumentProcessor {
       };
     } catch (error) {
       console.error(`Processing failed for job ${jobId}:`, error);
-      await this.updateJobStatus(
-        jobId,
-        "failed",
-        error instanceof Error ? error.message : "Unknown error"
-      );
-      throw error;
+
+      // Provide more specific error messages for common issues
+      let errorMessage = "Unknown error";
+      if (error instanceof Error) {
+        if (error.message.includes("No content could be extracted")) {
+          errorMessage =
+            "Document processing failed: Unable to extract text content from the file. Please ensure the file is a valid DOCX, PDF, or other supported format.";
+        } else if (error.message.includes("Invalid DOCX file format")) {
+          errorMessage =
+            "Document processing failed: The file does not appear to be a valid DOCX document. Please check the file format.";
+        } else if (
+          error.message.includes("Permission denied") ||
+          error.message.includes("access")
+        ) {
+          errorMessage =
+            "Document processing failed: Permission denied accessing the file. Please check your Google Drive permissions.";
+        } else if (
+          error.message.includes("network") ||
+          error.message.includes("timeout")
+        ) {
+          errorMessage =
+            "Document processing failed: Network error while downloading the file. Please try again.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      await this.updateJobStatus(jobId, "failed", errorMessage);
+      throw new Error(errorMessage);
     } finally {
       // Clean up active job tracking
       setTimeout(() => {

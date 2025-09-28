@@ -1,12 +1,12 @@
-import { sql } from './neon-client';
+import { sql } from "./neon-client";
 import {
   Document,
   CreateDocumentDTO,
   UpdateDocumentDTO,
   StarredDocument,
   CreateStarredDocumentDTO,
-  DocumentWithStarred
-} from './types';
+  DocumentWithStarred,
+} from "./types";
 
 export class DocumentsService {
   // Create a new document link
@@ -35,7 +35,7 @@ export class DocumentsService {
           ${documentData.last_modified || null},
           ${documentData.file_size || null}
         )
-        ON CONFLICT (drive_file_id)
+        ON CONFLICT (project_id, drive_file_id)
         DO UPDATE SET
           file_name = EXCLUDED.file_name,
           file_type = EXCLUDED.file_type,
@@ -49,7 +49,7 @@ export class DocumentsService {
 
       return result[0] as Document;
     } catch (error) {
-      console.error('Error creating document:', error);
+      console.error("Error creating document:", error);
       throw error;
     }
   }
@@ -64,13 +64,15 @@ export class DocumentsService {
 
       return result.length > 0 ? (result[0] as Document) : null;
     } catch (error) {
-      console.error('Error getting document by ID:', error);
+      console.error("Error getting document by ID:", error);
       throw error;
     }
   }
 
   // Get document by Drive file ID
-  async getDocumentByDriveFileId(driveFileId: string): Promise<Document | null> {
+  async getDocumentByDriveFileId(
+    driveFileId: string
+  ): Promise<Document | null> {
     try {
       const result = await sql`
         SELECT * FROM documents
@@ -79,7 +81,7 @@ export class DocumentsService {
 
       return result.length > 0 ? (result[0] as Document) : null;
     } catch (error) {
-      console.error('Error getting document by Drive file ID:', error);
+      console.error("Error getting document by Drive file ID:", error);
       throw error;
     }
   }
@@ -95,13 +97,16 @@ export class DocumentsService {
 
       return result as Document[];
     } catch (error) {
-      console.error('Error getting documents by project ID:', error);
+      console.error("Error getting documents by project ID:", error);
       throw error;
     }
   }
 
   // Update document metadata
-  async updateDocument(documentId: string, updateData: UpdateDocumentDTO): Promise<Document> {
+  async updateDocument(
+    documentId: string,
+    updateData: UpdateDocumentDTO
+  ): Promise<Document> {
     try {
       const updates: string[] = [];
       const values: any[] = [];
@@ -142,12 +147,12 @@ export class DocumentsService {
       }
 
       if (updates.length === 0) {
-        throw new Error('No fields to update');
+        throw new Error("No fields to update");
       }
 
       const query = `
         UPDATE documents
-        SET ${updates.join(', ')}
+        SET ${updates.join(", ")}
         WHERE id = $${updates.length + 1}
         RETURNING *
       `;
@@ -157,7 +162,7 @@ export class DocumentsService {
       const result = await sql.unsafe(query, values);
       return result[0] as Document;
     } catch (error) {
-      console.error('Error updating document:', error);
+      console.error("Error updating document:", error);
       throw error;
     }
   }
@@ -170,7 +175,7 @@ export class DocumentsService {
         WHERE id = ${documentId}
       `;
     } catch (error) {
-      console.error('Error deleting document:', error);
+      console.error("Error deleting document:", error);
       throw error;
     }
   }
@@ -183,7 +188,7 @@ export class DocumentsService {
         WHERE drive_file_id = ${driveFileId}
       `;
     } catch (error) {
-      console.error('Error deleting document by Drive file ID:', error);
+      console.error("Error deleting document by Drive file ID:", error);
       throw error;
     }
   }
@@ -197,7 +202,7 @@ export class DocumentsService {
         WHERE id = ${documentId}
       `;
     } catch (error) {
-      console.error('Error marking document as analyzed:', error);
+      console.error("Error marking document as analyzed:", error);
       throw error;
     }
   }
@@ -217,13 +222,16 @@ export class DocumentsService {
 
       return result as Document[];
     } catch (error) {
-      console.error('Error getting documents needing analysis:', error);
+      console.error("Error getting documents needing analysis:", error);
       throw error;
     }
   }
 
   // Get documents modified since a specific date
-  async getDocumentsModifiedSince(projectId: string, since: Date): Promise<Document[]> {
+  async getDocumentsModifiedSince(
+    projectId: string,
+    since: Date
+  ): Promise<Document[]> {
     try {
       const result = await sql`
         SELECT * FROM documents
@@ -234,7 +242,7 @@ export class DocumentsService {
 
       return result as Document[];
     } catch (error) {
-      console.error('Error getting recently modified documents:', error);
+      console.error("Error getting recently modified documents:", error);
       throw error;
     }
   }
@@ -265,7 +273,7 @@ export class DocumentsService {
 
       return result.length > 0 ? (result[0] as Document) : null;
     } catch (error) {
-      console.error('Error syncing document metadata:', error);
+      console.error("Error syncing document metadata:", error);
       throw error;
     }
   }
@@ -292,7 +300,7 @@ export class DocumentsService {
         return {
           totalDocuments: 0,
           analyzedDocuments: 0,
-          pendingDocuments: 0
+          pendingDocuments: 0,
         };
       }
 
@@ -301,16 +309,18 @@ export class DocumentsService {
         totalDocuments: row.total_documents || 0,
         analyzedDocuments: row.analyzed_documents || 0,
         pendingDocuments: row.pending_documents || 0,
-        lastAnalyzedDate: row.last_analyzed_date
+        lastAnalyzedDate: row.last_analyzed_date,
       };
     } catch (error) {
-      console.error('Error getting document stats:', error);
+      console.error("Error getting document stats:", error);
       throw error;
     }
   }
 
   // Star a document
-  async starDocument(starData: CreateStarredDocumentDTO): Promise<StarredDocument> {
+  async starDocument(
+    starData: CreateStarredDocumentDTO
+  ): Promise<StarredDocument> {
     try {
       const result = await sql`
         INSERT INTO starred_documents (project_id, document_id)
@@ -330,13 +340,16 @@ export class DocumentsService {
 
       return result[0] as StarredDocument;
     } catch (error) {
-      console.error('Error starring document:', error);
+      console.error("Error starring document:", error);
       throw error;
     }
   }
 
   // Unstar a document
-  async unstarDocument(projectId: string, documentId: string): Promise<boolean> {
+  async unstarDocument(
+    projectId: string,
+    documentId: string
+  ): Promise<boolean> {
     try {
       const result = await sql`
         DELETE FROM starred_documents
@@ -345,13 +358,15 @@ export class DocumentsService {
 
       return result.count > 0;
     } catch (error) {
-      console.error('Error unstarring document:', error);
+      console.error("Error unstarring document:", error);
       throw error;
     }
   }
 
   // Get starred documents for a project
-  async getStarredDocumentsByProjectId(projectId: string): Promise<StarredDocument[]> {
+  async getStarredDocumentsByProjectId(
+    projectId: string
+  ): Promise<StarredDocument[]> {
     try {
       const result = await sql`
         SELECT * FROM starred_documents
@@ -361,13 +376,15 @@ export class DocumentsService {
 
       return result as StarredDocument[];
     } catch (error) {
-      console.error('Error getting starred documents:', error);
+      console.error("Error getting starred documents:", error);
       throw error;
     }
   }
 
   // Get documents with starred status for a project
-  async getDocumentsWithStarredStatus(projectId: string): Promise<DocumentWithStarred[]> {
+  async getDocumentsWithStarredStatus(
+    projectId: string
+  ): Promise<DocumentWithStarred[]> {
     try {
       const result = await sql`
         SELECT
@@ -382,13 +399,16 @@ export class DocumentsService {
 
       return result as DocumentWithStarred[];
     } catch (error) {
-      console.error('Error getting documents with starred status:', error);
+      console.error("Error getting documents with starred status:", error);
       throw error;
     }
   }
 
   // Check if document belongs to project
-  async isDocumentInProject(documentId: string, projectId: string): Promise<boolean> {
+  async isDocumentInProject(
+    documentId: string,
+    projectId: string
+  ): Promise<boolean> {
     try {
       const result = await sql`
         SELECT 1 FROM documents
@@ -397,7 +417,7 @@ export class DocumentsService {
 
       return result.length > 0;
     } catch (error) {
-      console.error('Error checking document project ownership:', error);
+      console.error("Error checking document project ownership:", error);
       return false;
     }
   }

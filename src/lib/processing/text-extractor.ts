@@ -22,10 +22,42 @@ export class TextExtractor {
    */
   async extractFromDocx(buffer: Buffer): Promise<TextExtractionResult> {
     try {
+      console.log(`Extracting text from DOCX buffer (${buffer.length} bytes)`);
+
+      // Validate buffer
+      if (!buffer || buffer.length === 0) {
+        throw new Error("Invalid or empty buffer provided");
+      }
+
+      // Check if buffer looks like a DOCX file (ZIP signature)
+      if (buffer.length < 4 || buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
+        throw new Error(
+          "Invalid DOCX file format - file does not appear to be a valid Word document"
+        );
+      }
+
       const result = await mammoth.extractRawText({ buffer });
 
+      console.log(
+        `Mammoth extraction completed. Text length: ${result.value.length}`
+      );
+
       // Basic word count
-      const words = result.value.trim().split(/\s+/).length;
+      const words = result.value
+        .trim()
+        .split(/\s+/)
+        .filter((word) => word.length > 0).length;
+
+      // Validate extracted text
+      if (!result.value || result.value.trim().length === 0) {
+        console.warn("Mammoth extracted empty text from DOCX");
+        return {
+          text: "No readable text content found in this DOCX file",
+          metadata: {
+            words: 0,
+          },
+        };
+      }
 
       return {
         text: result.value,
@@ -35,6 +67,23 @@ export class TextExtractor {
       };
     } catch (error) {
       console.error("Error extracting text from DOCX:", error);
+
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes("Invalid DOCX file format")) {
+          throw new Error(
+            "Invalid DOCX file format - file does not appear to be a valid Word document"
+          );
+        } else if (error.message.includes("Invalid or empty buffer")) {
+          throw new Error("Invalid or empty file data provided");
+        } else if (
+          error.message.includes("corrupt") ||
+          error.message.includes("damaged")
+        ) {
+          throw new Error("DOCX file appears to be corrupted or damaged");
+        }
+      }
+
       throw new Error(
         `Failed to extract text from DOCX: ${
           error instanceof Error ? error.message : "Unknown error"

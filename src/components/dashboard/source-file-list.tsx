@@ -1,18 +1,40 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Star, AlertTriangle, ExternalLink, RefreshCw, Link, Link2Off, Plus } from 'lucide-react';
-import { FileTypeIcon, getFileTypeName } from './file-type-icon';
-import { SourceActionToolbar } from './source-action-toolbar';
-import { cn } from '@/lib/utils';
+import { useState, useEffect, useCallback } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Star,
+  AlertTriangle,
+  ExternalLink,
+  RefreshCw,
+  Link,
+  Link2Off,
+  Plus,
+} from "lucide-react";
+import { FileTypeIcon, getFileTypeName } from "./file-type-icon";
+import { SourceActionToolbar } from "./source-action-toolbar";
+import { cn } from "@/lib/utils";
 
 interface DriveFile {
   id: string;
@@ -43,7 +65,7 @@ export function SourceFileList({
   className,
   onFileLinked,
   onFileRemoved,
-  onFileStarred
+  onFileStarred,
 }: SourceFileListProps) {
   const [files, setFiles] = useState<DriveFile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -55,111 +77,137 @@ export function SourceFileList({
 
   // Format file size
   const formatFileSize = (bytes: number | null): string => {
-    if (!bytes) return '--';
-    const sizes = ['B', 'KB', 'MB', 'GB'];
+    if (!bytes) return "--";
+    const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
   };
 
   // Format date
   const formatDate = (date: Date | null): string => {
-    if (!date) return '--';
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+    if (!date) return "--";
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }).format(new Date(date));
   };
 
   // Fetch folder contents with automatic retry and token refresh
-  const fetchFolderContents = useCallback(async (retryCount = 0) => {
-    setLoading(true);
-    setError(null);
+  const fetchFolderContents = useCallback(
+    async (retryCount = 0) => {
+      setLoading(true);
+      setError(null);
 
-    try {
-      const [authToken, googleToken] = await Promise.all([
-        getAuthToken(),
-        getGoogleToken()
-      ]);
+      try {
+        const [authToken, googleToken] = await Promise.all([
+          getAuthToken(),
+          getGoogleToken(),
+        ]);
 
-      const response = await fetch(`/api/projects/${projectId}/documents/list-folder?folderId=${folderId}`, {
-        headers: {
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Token': googleToken,
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-
-        // If 401 and we haven't retried yet, try to refresh tokens and retry
-        if (response.status === 401 && retryCount === 0) {
-          console.log('Authentication failed, attempting token refresh...');
-          try {
-            await refreshTokensAndRetry();
-            return;
-          } catch (refreshError) {
-            console.error('Token refresh failed:', refreshError);
-            throw new Error('Authentication failed. Please sign out and sign in again.');
+        const response = await fetch(
+          `/api/projects/${projectId}/documents/list-folder?folderId=${folderId}`,
+          {
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "X-Google-Token": googleToken,
+            },
           }
-        } else if (response.status === 401) {
-          throw new Error('Authentication failed. Please sign out and sign in again.');
-        } else if (response.status === 404) {
-          throw new Error('Project not found or access denied.');
-        } else if (response.status === 400) {
-          throw new Error(errorData.error || 'Failed to access Google Drive. Please check permissions.');
-        } else {
-          throw new Error(errorData.error || 'Failed to fetch file contents');
+        );
+
+        if (!response.ok) {
+          const errorData = await response
+            .json()
+            .catch(() => ({ error: "Unknown error" }));
+
+          // If 401 and we haven't retried yet, try to refresh tokens and retry
+          if (response.status === 401 && retryCount === 0) {
+            console.log("Authentication failed, attempting token refresh...");
+            try {
+              await refreshTokensAndRetry();
+              return;
+            } catch (refreshError) {
+              console.error("Token refresh failed:", refreshError);
+              throw new Error(
+                "Authentication failed. Please sign out and sign in again."
+              );
+            }
+          } else if (response.status === 401) {
+            throw new Error(
+              "Authentication failed. Please sign out and sign in again."
+            );
+          } else if (response.status === 404) {
+            throw new Error("Project not found or access denied.");
+          } else if (response.status === 400) {
+            throw new Error(
+              errorData.error ||
+                "Failed to access Google Drive. Please check permissions."
+            );
+          } else {
+            throw new Error(errorData.error || "Failed to fetch file contents");
+          }
         }
+
+        const data = await response.json().catch(() => {
+          throw new Error("Invalid response format from server");
+        });
+        setFiles(data.files || []);
+      } catch (err) {
+        console.error("Error fetching folder contents:", err);
+        let errorMessage = "Failed to load files";
+
+        if (err instanceof Error) {
+          if (err.message.includes("Authentication failed")) {
+            errorMessage =
+              "Authentication failed. Please sign out and sign in again.";
+          } else if (
+            err.message.includes("not found") ||
+            err.message.includes("access denied")
+          ) {
+            errorMessage = "Project not found or access denied.";
+          } else if (
+            err.message.includes("Google Drive") ||
+            err.message.includes("permissions")
+          ) {
+            errorMessage =
+              "Failed to access Google Drive. Please check your permissions and try again.";
+          } else if (err.message.includes("No Google Drive access token")) {
+            errorMessage =
+              "Google Drive access token is missing. Please sign out and sign in again.";
+          } else {
+            errorMessage = err.message;
+          }
+        }
+
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
       }
 
-      const data = await response.json();
-      setFiles(data.files || []);
-    } catch (err) {
-      console.error('Error fetching folder contents:', err);
-      let errorMessage = 'Failed to load files';
+      // Helper function to refresh tokens and retry
+      async function refreshTokensAndRetry() {
+        // Clear existing tokens to force refresh
+        await clearTokens();
 
-      if (err instanceof Error) {
-        if (err.message.includes('Authentication failed')) {
-          errorMessage = 'Authentication failed. Please sign out and sign in again.';
-        } else if (err.message.includes('not found') || err.message.includes('access denied')) {
-          errorMessage = 'Project not found or access denied.';
-        } else if (err.message.includes('Google Drive') || err.message.includes('permissions')) {
-          errorMessage = 'Failed to access Google Drive. Please check your permissions and try again.';
-        } else if (err.message.includes('No Google Drive access token')) {
-          errorMessage = 'Google Drive access token is missing. Please sign out and sign in again.';
-        } else {
-          errorMessage = err.message;
-        }
+        // Wait a moment for the token refresh to take effect
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        // Retry the request
+        return fetchFolderContents(retryCount + 1);
       }
-
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-
-    // Helper function to refresh tokens and retry
-    async function refreshTokensAndRetry() {
-      // Clear existing tokens to force refresh
-      await clearTokens();
-
-      // Wait a moment for the token refresh to take effect
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      // Retry the request
-      return fetchFolderContents(retryCount + 1);
-    }
-  }, [projectId, folderId]);
+    },
+    [projectId, folderId]
+  );
 
   // Get Firebase ID token for API authorization
   const getAuthToken = async (): Promise<string> => {
-    const { auth } = await import('@/lib/firebase/firebase');
+    const { auth } = await import("@/lib/firebase/firebase");
     const user = auth.currentUser;
 
     if (!user) {
-      throw new Error('No authenticated user found');
+      throw new Error("No authenticated user found");
     }
 
     return await user.getIdToken();
@@ -168,17 +216,21 @@ export function SourceFileList({
   // Get Google OAuth token for Drive API access
   const getGoogleToken = async (): Promise<string> => {
     try {
-      const { getDriveAccessToken } = await import('@/lib/firebase/firebase');
+      const { getDriveAccessToken } = await import("@/lib/firebase/firebase");
       const token = await getDriveAccessToken();
 
       if (!token) {
-        throw new Error('No Google Drive access token available. Please sign out and sign in again.');
+        throw new Error(
+          "No Google Drive access token available. Please sign out and sign in again."
+        );
       }
 
       return token;
     } catch (error) {
-      console.error('Error getting Google token:', error);
-      throw new Error('Failed to get Google Drive access token. Please sign out and sign in again.');
+      console.error("Error getting Google token:", error);
+      throw new Error(
+        "Failed to get Google Drive access token. Please sign out and sign in again."
+      );
     }
   };
 
@@ -186,35 +238,37 @@ export function SourceFileList({
   const clearTokens = async (): Promise<void> => {
     try {
       // Clear tokens from sessionStorage if available
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('google_access_token');
-        sessionStorage.removeItem('google_refresh_token');
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("google_access_token");
+        sessionStorage.removeItem("google_refresh_token");
       }
 
       // Force re-authentication by clearing Firebase auth cache
-      const { auth } = await import('@/lib/firebase/firebase');
+      const { auth } = await import("@/lib/firebase/firebase");
       const user = auth.currentUser;
       if (user) {
         // Force token refresh by invalidating current token
         await user.getIdToken(true);
       }
     } catch (error) {
-      console.error('Error clearing tokens:', error);
+      console.error("Error clearing tokens:", error);
     }
   };
 
   // Handle file selection
   const handleFileSelect = (fileId: string, checked: boolean) => {
     if (checked) {
-      setSelectedFiles(prev => [...prev, fileId]);
+      setSelectedFiles((prev) => [...prev, fileId]);
     } else {
-      setSelectedFiles(prev => prev.filter(id => id !== fileId));
+      setSelectedFiles((prev) => prev.filter((id) => id !== fileId));
     }
   };
 
   // Handle select all/deselect all
   const handleSelectAll = () => {
-    const selectableFiles = files.filter(f => f.isLinkedToProject).map(f => f.id);
+    const selectableFiles = files
+      .filter((f) => f.isLinkedToProject)
+      .map((f) => f.id);
     setSelectedFiles(selectableFiles);
   };
 
@@ -230,47 +284,50 @@ export function SourceFileList({
 
   // Star selected files
   const handleStarSelected = async () => {
-    setActionLoading('star');
+    setActionLoading("star");
     try {
       const documentIds = selectedFiles
-        .map(fileId => files.find(f => f.id === fileId)?.documentId)
+        .map((fileId) => files.find((f) => f.id === fileId)?.documentId)
         .filter(Boolean);
 
       const [authToken, googleToken] = await Promise.all([
         getAuthToken(),
-        getGoogleToken()
+        getGoogleToken(),
       ]);
 
-      const response = await fetch(`/api/projects/${projectId}/documents/star`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Token': googleToken,
-        },
-        body: JSON.stringify({ documentIds }),
-      });
+      const response = await fetch(
+        `/api/projects/${projectId}/documents/star`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${authToken}`,
+            "X-Google-Token": googleToken,
+          },
+          body: JSON.stringify({ documentIds }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error('Failed to star files');
+        throw new Error("Failed to star files");
       }
 
       // Update local state
-      setFiles(prev => prev.map(file =>
-        selectedFiles.includes(file.id)
-          ? { ...file, isStarred: true }
-          : file
-      ));
+      setFiles((prev) =>
+        prev.map((file) =>
+          selectedFiles.includes(file.id) ? { ...file, isStarred: true } : file
+        )
+      );
 
       setSelectedFiles([]);
       setIsSelectMode(false);
 
       // Notify parent
-      selectedFiles.forEach(fileId => {
+      selectedFiles.forEach((fileId) => {
         onFileStarred?.(fileId, true);
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to star files');
+      setError(err instanceof Error ? err.message : "Failed to star files");
     } finally {
       setActionLoading(null);
     }
@@ -278,48 +335,55 @@ export function SourceFileList({
 
   // Remove selected files from project
   const handleDeleteSelected = async () => {
-    setActionLoading('delete');
+    setActionLoading("delete");
     try {
       const documentIds = selectedFiles
-        .map(fileId => files.find(f => f.id === fileId)?.documentId)
+        .map((fileId) => files.find((f) => f.id === fileId)?.documentId)
         .filter(Boolean);
 
       const [authToken, googleToken] = await Promise.all([
         getAuthToken(),
-        getGoogleToken()
+        getGoogleToken(),
       ]);
 
       const response = await fetch(`/api/projects/${projectId}/documents`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Token': googleToken,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "X-Google-Token": googleToken,
         },
         body: JSON.stringify({ documentIds }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to remove files');
+        throw new Error("Failed to remove files");
       }
 
       // Update local state
-      setFiles(prev => prev.map(file =>
-        selectedFiles.includes(file.id)
-          ? { ...file, isLinkedToProject: false, isStarred: false, documentId: null }
-          : file
-      ));
+      setFiles((prev) =>
+        prev.map((file) =>
+          selectedFiles.includes(file.id)
+            ? {
+                ...file,
+                isLinkedToProject: false,
+                isStarred: false,
+                documentId: null,
+              }
+            : file
+        )
+      );
 
       setSelectedFiles([]);
       setIsSelectMode(false);
       setShowDeleteDialog(false);
 
       // Notify parent
-      selectedFiles.forEach(fileId => {
+      selectedFiles.forEach((fileId) => {
         onFileRemoved?.(fileId);
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove files');
+      setError(err instanceof Error ? err.message : "Failed to remove files");
     } finally {
       setActionLoading(null);
     }
@@ -331,55 +395,67 @@ export function SourceFileList({
     try {
       const [authToken, googleToken] = await Promise.all([
         getAuthToken(),
-        getGoogleToken()
+        getGoogleToken(),
       ]);
 
       const response = await fetch(`/api/projects/${projectId}/documents`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Token': googleToken,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "X-Google-Token": googleToken,
         },
         body: JSON.stringify({ driveFileId: fileId }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
 
         // Retry on 401 if we haven't already
         if (response.status === 401 && retryCount === 0) {
-          console.log('Authentication failed during link, attempting token refresh...');
+          console.log(
+            "Authentication failed during link, attempting token refresh..."
+          );
           await clearTokens();
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           return handleLinkFile(fileId, retryCount + 1);
         }
 
-        throw new Error(errorData.error || 'Failed to link file');
+        throw new Error(errorData.error || "Failed to link file");
       }
 
-      const result = await response.json();
+      const result = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
 
       // Update local state
-      setFiles(prev => prev.map(file =>
-        file.id === fileId
-          ? {
-              ...file,
-              isLinkedToProject: true,
-              documentId: result.document?.id || null
-            }
-          : file
-      ));
+      setFiles((prev) =>
+        prev.map((file) =>
+          file.id === fileId
+            ? {
+                ...file,
+                isLinkedToProject: true,
+                documentId: result.document?.id || null,
+              }
+            : file
+        )
+      );
 
       // Notify parent
       onFileLinked?.(fileId);
     } catch (err) {
-      console.error('Error linking file:', err);
-      let errorMessage = 'Failed to link file';
+      console.error("Error linking file:", err);
+      let errorMessage = "Failed to link file";
 
       if (err instanceof Error) {
-        if (err.message.includes('Authentication failed') || err.message.includes('token')) {
-          errorMessage = 'Authentication failed. Please sign out and sign in again.';
+        if (
+          err.message.includes("Authentication failed") ||
+          err.message.includes("token")
+        ) {
+          errorMessage =
+            "Authentication failed. Please sign out and sign in again.";
         } else {
           errorMessage = err.message;
         }
@@ -393,41 +469,48 @@ export function SourceFileList({
 
   // Unlink individual file from project
   const handleUnlinkFile = async (fileId: string) => {
-    const file = files.find(f => f.id === fileId);
+    const file = files.find((f) => f.id === fileId);
     if (!file?.documentId) return;
 
     setActionLoading(`unlink-${fileId}`);
     try {
       const [authToken, googleToken] = await Promise.all([
         getAuthToken(),
-        getGoogleToken()
+        getGoogleToken(),
       ]);
 
       const response = await fetch(`/api/projects/${projectId}/documents`, {
-        method: 'DELETE',
+        method: "DELETE",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authToken}`,
-          'X-Google-Token': googleToken,
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+          "X-Google-Token": googleToken,
         },
         body: JSON.stringify({ documentIds: [file.documentId] }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to unlink file');
+        throw new Error("Failed to unlink file");
       }
 
       // Update local state
-      setFiles(prev => prev.map(f =>
-        f.id === fileId
-          ? { ...f, isLinkedToProject: false, isStarred: false, documentId: null }
-          : f
-      ));
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.id === fileId
+            ? {
+                ...f,
+                isLinkedToProject: false,
+                isStarred: false,
+                documentId: null,
+              }
+            : f
+        )
+      );
 
       // Notify parent
       onFileRemoved?.(fileId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to unlink file');
+      setError(err instanceof Error ? err.message : "Failed to unlink file");
     } finally {
       setActionLoading(null);
     }
@@ -440,8 +523,8 @@ export function SourceFileList({
     }
   }, [folderId, fetchFolderContents]);
 
-  const linkedFiles = files.filter(f => f.isLinkedToProject);
-  const availableFiles = files.filter(f => !f.isLinkedToProject);
+  const linkedFiles = files.filter((f) => f.isLinkedToProject);
+  const availableFiles = files.filter((f) => !f.isLinkedToProject);
   const allFiles = files; // Show all files instead of just linked ones
   const selectedCount = selectedFiles.length;
 
@@ -491,13 +574,13 @@ export function SourceFileList({
                   <RefreshCw size={14} className="mr-1" />
                   Retry
                 </Button>
-                {error.includes('sign out') && (
+                {error.includes("sign out") && (
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => {
                       // Redirect to sign out
-                      window.location.href = '/';
+                      window.location.href = "/";
                     }}
                   >
                     Sign Out
@@ -518,9 +601,7 @@ export function SourceFileList({
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">Folder Contents</CardTitle>
             <div className="flex items-center gap-2">
-              <Badge variant="default">
-                {linkedFiles.length} linked
-              </Badge>
+              <Badge variant="default">{linkedFiles.length} linked</Badge>
               {availableFiles.length > 0 && (
                 <Badge variant="secondary">
                   {availableFiles.length} available
@@ -533,7 +614,10 @@ export function SourceFileList({
                 disabled={loading}
                 aria-label="Refresh folder contents"
               >
-                <RefreshCw size={16} className={cn(loading && 'animate-spin')} />
+                <RefreshCw
+                  size={16}
+                  className={cn(loading && "animate-spin")}
+                />
               </Button>
             </div>
           </div>
@@ -564,40 +648,62 @@ export function SourceFileList({
                   <div
                     key={file.id}
                     className={cn(
-                      'border rounded-md p-3 transition-colors',
-                      isSelectMode && selectedFiles.includes(file.id) && 'bg-blue-50 border-blue-200'
+                      "border rounded-md p-3 transition-colors",
+                      isSelectMode &&
+                        selectedFiles.includes(file.id) &&
+                        "bg-blue-50 border-blue-200"
                     )}
                   >
                     <div className="flex items-start gap-3">
                       {isSelectMode && file.isLinkedToProject && (
                         <Checkbox
                           checked={selectedFiles.includes(file.id)}
-                          onCheckedChange={(checked) => handleFileSelect(file.id, checked as boolean)}
+                          onCheckedChange={(checked) =>
+                            handleFileSelect(file.id, checked as boolean)
+                          }
                           aria-label={`Select ${file.name}`}
                         />
                       )}
 
-                      <FileTypeIcon mimeType={file.mimeType} fileName={file.name} size={24} />
+                      <FileTypeIcon
+                        mimeType={file.mimeType}
+                        fileName={file.name}
+                        size={24}
+                      />
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-sm truncate">{file.name}</p>
+                          <p className="font-medium text-sm truncate">
+                            {file.name}
+                          </p>
                           {file.isLinkedToProject ? (
-                            <Badge variant="default" className="text-xs px-1 py-0">
+                            <Badge
+                              variant="default"
+                              className="text-xs px-1 py-0"
+                            >
                               Linked
                             </Badge>
                           ) : (
-                            <Badge variant="outline" className="text-xs px-1 py-0">
+                            <Badge
+                              variant="outline"
+                              className="text-xs px-1 py-0"
+                            >
                               Available
                             </Badge>
                           )}
                           {file.isStarred && (
-                            <Star size={14} className="text-yellow-500 fill-current flex-shrink-0" />
+                            <Star
+                              size={14}
+                              className="text-yellow-500 fill-current flex-shrink-0"
+                            />
                           )}
                         </div>
                         <div className="text-xs text-gray-500 space-y-1">
                           <p>{getFileTypeName(file.mimeType)}</p>
-                          <p>{formatFileSize(file.fileSize)} • {formatDate(file.lastModified)}</p>
+                          <p>
+                            {formatFileSize(file.fileSize)} •{" "}
+                            {formatDate(file.lastModified)}
+                          </p>
                         </div>
                       </div>
 
@@ -623,11 +729,7 @@ export function SourceFileList({
                             <Plus size={14} />
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          asChild
-                        >
+                        <Button variant="ghost" size="sm" asChild>
                           <a
                             href={file.webViewLink}
                             target="_blank"
@@ -662,14 +764,18 @@ export function SourceFileList({
                       <TableRow
                         key={file.id}
                         className={cn(
-                          isSelectMode && selectedFiles.includes(file.id) && 'bg-blue-50'
+                          isSelectMode &&
+                            selectedFiles.includes(file.id) &&
+                            "bg-blue-50"
                         )}
                       >
                         {isSelectMode && file.isLinkedToProject && (
                           <TableCell>
                             <Checkbox
                               checked={selectedFiles.includes(file.id)}
-                              onCheckedChange={(checked) => handleFileSelect(file.id, checked as boolean)}
+                              onCheckedChange={(checked) =>
+                                handleFileSelect(file.id, checked as boolean)
+                              }
                               aria-label={`Select ${file.name}`}
                             />
                           </TableCell>
@@ -681,23 +787,37 @@ export function SourceFileList({
                         )}
 
                         <TableCell>
-                          <FileTypeIcon mimeType={file.mimeType} fileName={file.name} />
+                          <FileTypeIcon
+                            mimeType={file.mimeType}
+                            fileName={file.name}
+                          />
                         </TableCell>
 
                         <TableCell>
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="truncate font-medium">{file.name}</span>
+                            <span className="truncate font-medium">
+                              {file.name}
+                            </span>
                             {file.isLinkedToProject ? (
-                              <Badge variant="default" className="text-xs px-1 py-0">
+                              <Badge
+                                variant="default"
+                                className="text-xs px-1 py-0"
+                              >
                                 Linked
                               </Badge>
                             ) : (
-                              <Badge variant="outline" className="text-xs px-1 py-0">
+                              <Badge
+                                variant="outline"
+                                className="text-xs px-1 py-0"
+                              >
                                 Available
                               </Badge>
                             )}
                             {file.isStarred && (
-                              <Star size={14} className="text-yellow-500 fill-current flex-shrink-0" />
+                              <Star
+                                size={14}
+                                className="text-yellow-500 fill-current flex-shrink-0"
+                              />
                             )}
                           </div>
                         </TableCell>
@@ -737,11 +857,7 @@ export function SourceFileList({
                                 <Plus size={14} />
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              asChild
-                            >
+                            <Button variant="ghost" size="sm" asChild>
                               <a
                                 href={file.webViewLink}
                                 target="_blank"
@@ -769,25 +885,30 @@ export function SourceFileList({
           <DialogHeader>
             <DialogTitle>Remove Files from Project</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove {selectedCount} {selectedCount === 1 ? 'file' : 'files'} from this project?
+              Are you sure you want to remove {selectedCount}{" "}
+              {selectedCount === 1 ? "file" : "files"} from this project?
               <br />
-              <strong>The files will remain in your Google Drive and won't be deleted.</strong>
+              <strong>
+                The files will remain in your Google Drive and won't be deleted.
+              </strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => setShowDeleteDialog(false)}
-              disabled={actionLoading === 'delete'}
+              disabled={actionLoading === "delete"}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={handleDeleteSelected}
-              disabled={actionLoading === 'delete'}
+              disabled={actionLoading === "delete"}
             >
-              {actionLoading === 'delete' ? 'Removing...' : 'Remove from Project'}
+              {actionLoading === "delete"
+                ? "Removing..."
+                : "Remove from Project"}
             </Button>
           </DialogFooter>
         </DialogContent>

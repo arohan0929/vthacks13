@@ -116,7 +116,9 @@ export default function ProjectDetailPage({
         throw new Error(`Failed to fetch project: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
       setProjectData(data);
       setHasUploadedSources(data.documents && data.documents.length > 0);
     } catch (error) {
@@ -154,11 +156,15 @@ export default function ProjectDetailPage({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: "Unknown error" }));
         throw new Error(errorData.error || "Failed to link document");
       }
 
-      const responseData = await response.json();
+      const responseData = await response.json().catch(() => {
+        throw new Error("Invalid response format from server");
+      });
 
       // Refresh project data to show new document
       await fetchProjectData();

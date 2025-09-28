@@ -117,7 +117,33 @@ export class DriveService {
       };
     } catch (error) {
       console.error("Error getting file content:", error);
-      throw new Error(`Failed to get content for file ${fileId}`);
+
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (
+          error.message.includes("Permission denied") ||
+          error.message.includes("access")
+        ) {
+          throw new Error(
+            `Permission denied accessing file ${fileId}. Please check your Google Drive permissions.`
+          );
+        } else if (error.message.includes("not found")) {
+          throw new Error(`File ${fileId} not found in Google Drive.`);
+        } else if (
+          error.message.includes("network") ||
+          error.message.includes("timeout")
+        ) {
+          throw new Error(
+            `Network error accessing file ${fileId}. Please try again.`
+          );
+        }
+      }
+
+      throw new Error(
+        `Failed to get content for file ${fileId}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
     }
   }
 
@@ -184,6 +210,8 @@ export class DriveService {
   // Extract text from DOCX files
   private async extractDocxText(fileId: string): Promise<string> {
     try {
+      console.log(`Starting DOCX text extraction for file: ${fileId}`);
+
       const response = await this.client.files.get(
         {
           fileId,
@@ -194,12 +222,50 @@ export class DriveService {
         }
       );
 
+      console.log(
+        `Downloaded DOCX file, size: ${response.data.byteLength} bytes`
+      );
+
       const buffer = Buffer.from(response.data);
+
+      // Validate buffer
+      if (buffer.length === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+
+      console.log(`Extracting text from DOCX buffer using mammoth...`);
       const result = await this.textExtractor.extractFromDocx(buffer);
+
+      console.log(
+        `Successfully extracted ${result.text.length} characters from DOCX`
+      );
+
+      // Validate extracted text
+      if (!result.text || result.text.trim().length === 0) {
+        console.warn("DOCX extraction returned empty text");
+        return "No text content found in DOCX file";
+      }
 
       return result.text;
     } catch (error) {
       console.error("Error extracting text from DOCX:", error);
+
+      // Provide more specific error messages
+      if (error instanceof Error) {
+        if (error.message.includes("Invalid file format")) {
+          return "Error: Invalid DOCX file format. Please ensure the file is a valid Word document.";
+        } else if (error.message.includes("permission")) {
+          return "Error: Permission denied accessing DOCX file. Please check file permissions.";
+        } else if (
+          error.message.includes("network") ||
+          error.message.includes("timeout")
+        ) {
+          return "Error: Network error downloading DOCX file. Please try again.";
+        } else if (error.message.includes("empty")) {
+          return "Error: DOCX file appears to be empty or corrupted.";
+        }
+      }
+
       return `Error: Could not extract text from DOCX file (${
         error instanceof Error ? error.message : "Unknown error"
       })`;

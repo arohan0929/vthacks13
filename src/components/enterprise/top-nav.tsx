@@ -7,9 +7,6 @@ import {
   Search,
   Bell,
   ChevronDown,
-  Settings,
-  User,
-  LogOut,
   HelpCircle,
   Globe,
   ChevronRight,
@@ -38,7 +35,6 @@ export function TopNav({ className }: TopNavProps) {
     currentProject,
     projects,
     projectsLoading,
-    setCurrentProject,
     selectProjectById,
     clearCurrentProject,
     fetchProjects
@@ -57,10 +53,8 @@ export function TopNav({ className }: TopNavProps) {
 
   // Get user display info with fallbacks
   const userName = user?.displayName || 'User';
-  const userEmail = user?.email || 'user@company.com';
   const userInitials = getInitials(userName);
 
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isProjectSelectorOpen, setIsProjectSelectorOpen] = useState(false);
 
@@ -91,6 +85,13 @@ export function TopNav({ className }: TopNavProps) {
       if (segment === 'analytics') label = 'Analytics';
       if (segment === 'organization') label = 'Organization';
       if (segment === 'settings') label = 'Settings';
+
+      // Check if this segment is a project ID (looks like a UUID) and we have current project
+      const isProjectId = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(segment) ||
+                         (segments[index - 1] === 'projects' && currentProject?.id === segment);
+      if (isProjectId && currentProject && currentProject.id === segment) {
+        label = currentProject.name;
+      }
 
       breadcrumbs.push({
         label,
@@ -392,95 +393,23 @@ export function TopNav({ className }: TopNavProps) {
             )}
           </div>
 
-          {/* User Menu */}
-          <div className="relative">
-            <button
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-              className="flex items-center space-x-3 px-3 py-2 text-enterprise-text-tertiary hover:text-enterprise-text-primary transition-colors enterprise-focus rounded-lg"
-            >
-              <div className="w-8 h-8 rounded-full bg-enterprise-primary flex items-center justify-center">
-                <span className="text-sm font-semibold text-enterprise-text-primary">
-                  {userInitials}
-                </span>
-              </div>
-              <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-enterprise-text-primary">
-                  {userName}
-                </p>
-                <p className="text-xs text-enterprise-text-tertiary">
-                  Compliance Manager
-                </p>
-              </div>
-              <ChevronDown className="h-4 w-4" />
-            </button>
-
-            {/* User Dropdown */}
-            {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 enterprise-glass border border-enterprise-border-primary rounded-lg shadow-lg z-50">
-                <div className="p-4 border-b border-enterprise-border-primary">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 rounded-full bg-enterprise-primary flex items-center justify-center">
-                      <span className="text-sm font-semibold text-enterprise-text-primary">
-                        {userInitials}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-enterprise-text-primary">
-                        {userName}
-                      </p>
-                      <p className="text-xs text-enterprise-text-tertiary">
-                        {userEmail}
-                      </p>
-                      <p className="text-xs text-enterprise-text-tertiary">
-                        Compliance Manager
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="py-2">
-                  <Link
-                    href="/profile"
-                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
-                  >
-                    <User className="h-4 w-4" />
-                    <span>Profile</span>
-                  </Link>
-                  <Link
-                    href="/settings"
-                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
-                  >
-                    <Settings className="h-4 w-4" />
-                    <span>Settings</span>
-                  </Link>
-                  <Link
-                    href="/help"
-                    className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-text-secondary hover:text-enterprise-text-primary hover:bg-enterprise-surface-elevated transition-colors enterprise-focus"
-                  >
-                    <HelpCircle className="h-4 w-4" />
-                    <span>Help & Support</span>
-                  </Link>
-                </div>
-
-                <div className="border-t border-enterprise-border-primary py-2">
-                  <button className="flex items-center space-x-3 px-4 py-2 text-sm text-enterprise-error hover:bg-enterprise-surface-elevated transition-colors enterprise-focus w-full text-left">
-                    <LogOut className="h-4 w-4" />
-                    <span>Sign out</span>
-                  </button>
-                </div>
-              </div>
-            )}
+          {/* User Avatar - Simplified */}
+          <div className="flex items-center">
+            <div className="w-8 h-8 rounded-full bg-enterprise-primary flex items-center justify-center">
+              <span className="text-sm font-semibold text-enterprise-text-primary">
+                {userInitials}
+              </span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Click outside handlers */}
-      {(isNotificationOpen || isUserMenuOpen || isProjectSelectorOpen) && (
+      {(isNotificationOpen || isProjectSelectorOpen) && (
         <div
           className="fixed inset-0 z-40"
           onClick={() => {
             setIsNotificationOpen(false);
-            setIsUserMenuOpen(false);
             setIsProjectSelectorOpen(false);
           }}
         />

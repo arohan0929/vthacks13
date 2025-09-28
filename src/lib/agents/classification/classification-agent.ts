@@ -7,6 +7,7 @@ import {
 import { Tool } from "@langchain/core/tools";
 import { VectorRetrievalTool, WebSearchTool, getAgentTools } from "../tools";
 import { z } from "zod";
+import { testingDataService } from "../../services/testing-data-service";
 
 export interface ClassificationInput {
   projectDescription: string;
@@ -179,6 +180,13 @@ RESPOND WITH: Structured analysis including detected frameworks, confidence scor
     const startTime = Date.now();
 
     try {
+      // Check if testing mode is enabled
+      if (testingDataService.isTestingMode()) {
+        console.log("🔧 Testing mode enabled - returning hardcoded classification results");
+        return this.createTestingModeResponse(input.data, startTime);
+      }
+
+      // Normal AI processing
       // Parse the AI response and structure it properly
       const aiResponse = result.output || result.text || "";
 
@@ -195,11 +203,17 @@ RESPOND WITH: Structured analysis including detected frameworks, confidence scor
         console.log(
           "AI response was empty or failed, using keyword fallback for classification"
         );
+        console.log("Input data for fallback:", {
+          projectDescription: input.data.projectDescription?.substring(0, 200),
+          documentContentLength: input.data.documentContent?.length,
+          documentContentPreview: input.data.documentContent?.substring(0, 200)
+        });
         detectedFrameworks = await this.extractFrameworksFromResponse(
           aiResponse,
           input.data.projectDescription,
           input.data.documentContent
         );
+        console.log("Keyword-based detected frameworks:", detectedFrameworks);
       }
 
       // Perform overall assessment
@@ -690,23 +704,46 @@ Focus on frameworks most relevant to the project context and regulatory environm
   private createFallbackResponse(
     input: ClassificationInput
   ): ClassificationOutput {
+    // Use keyword-based detection as fallback instead of generic response
+    const fallbackFrameworks = this.extractFrameworksFromResponse(
+      "", // empty AI response
+      input.projectDescription,
+      input.documentContent
+    );
+
+    // If keyword detection found frameworks, use those
+    if (fallbackFrameworks.length > 0) {
+      return {
+        detectedFrameworks: fallbackFrameworks,
+        overallAssessment: this.performOverallAssessment(fallbackFrameworks, input),
+        analysisMetadata: {
+          documentsAnalyzed: 1,
+          vectorSearchResults: 0,
+          webSearchQueries: 0,
+          processingTime: 0,
+        },
+      };
+    }
+
+    // Only return generic if absolutely no frameworks detected
     return {
       detectedFrameworks: [
         {
           name: "General Compliance Review",
-          confidence: 0.5,
-          relevanceScore: 0.5,
-          reasoning: "Fallback analysis due to processing error",
+          confidence: 0.3,
+          relevanceScore: 0.3,
+          reasoning: "No specific frameworks detected - manual review recommended",
           requirements: [
-            "Review applicable regulations",
+            "Review project for applicable regulations",
+            "Assess data handling practices",
             "Implement basic security controls",
           ],
-          priority: "medium",
+          priority: "low",
         },
       ],
       overallAssessment: {
         primaryDomain: "general",
-        riskLevel: "medium",
+        riskLevel: "low",
         recommendedStartFrameworks: ["General Compliance Review"],
       },
       analysisMetadata: {
@@ -714,6 +751,43 @@ Focus on frameworks most relevant to the project context and regulatory environm
         vectorSearchResults: 0,
         webSearchQueries: 0,
         processingTime: 0,
+      },
+    };
+  }
+
+  /**
+   * Create testing mode response with hardcoded classification results
+   */
+  private createTestingModeResponse(
+    input: ClassificationInput,
+    startTime: number
+  ): ClassificationOutput {
+    const testingFrameworks = testingDataService.getClassificationFrameworks();
+
+    // Convert testing frameworks to classification output format
+    const detectedFrameworks: ClassificationOutput["detectedFrameworks"] = testingFrameworks.map(framework => ({
+      name: framework.name,
+      confidence: framework.confidence,
+      relevanceScore: framework.relevanceScore,
+      reasoning: framework.reasoning,
+      requirements: framework.requirements,
+      priority: framework.priority,
+    }));
+
+    // Perform overall assessment
+    const overallAssessment = this.performOverallAssessment(
+      detectedFrameworks,
+      input
+    );
+
+    return {
+      detectedFrameworks,
+      overallAssessment,
+      analysisMetadata: {
+        documentsAnalyzed: 1,
+        vectorSearchResults: 0, // No real vector search in testing mode
+        webSearchQueries: 0, // No real web search in testing mode
+        processingTime: Date.now() - startTime,
       },
     };
   }

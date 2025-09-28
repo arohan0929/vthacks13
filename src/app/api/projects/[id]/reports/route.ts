@@ -104,6 +104,13 @@ export async function POST(
       .map(doc => `Document: ${doc.name}\nType: ${doc.type}\nContent: ${doc.summary || doc.content || "No content available"}`)
       .join("\n\n");
 
+    console.log('Document content for classification:', {
+      projectDescription: project.description || "",
+      documentCount: documents.length,
+      documentContent: documentContent.substring(0, 500) + "...",
+      totalContentLength: documentContent.length
+    });
+
     // Create or get agent team for the project
     const registry = getAgentRegistry();
     let agentTeamIds: string[] = [];
@@ -154,6 +161,7 @@ export async function POST(
           analysisContext
         );
 
+        console.log('Classification agent result:', JSON.stringify(classificationResult, null, 2));
         agentResults.classification = classificationResult;
       }
 
@@ -191,6 +199,7 @@ export async function POST(
             analysisContext
           );
 
+          console.log('Grading agent result:', JSON.stringify(graderResult, null, 2));
           agentResults.grading = graderResult;
         }
       }

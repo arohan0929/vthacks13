@@ -8,6 +8,7 @@ import { Tool } from "@langchain/core/tools";
 import { VectorRetrievalTool, WebSearchTool, getAgentTools } from "../tools";
 import { DynamicTool } from "@langchain/core/tools";
 import { z } from "zod";
+import { testingDataService } from "../../services/testing-data-service";
 
 export interface IdeationInput {
   mode: "questions" | "chat";
@@ -174,7 +175,7 @@ export class IdeationAgent extends BaseAgent<IdeationInput, IdeationOutput> {
             projectId: projectId,
             query: query,
             limit: 10,
-            threshold: 0.5 // Lower threshold to get more results
+            threshold: 0.3 // Much lower threshold to get more results (0.3 instead of 0.5)
           });
 
           // Call the tool
@@ -311,6 +312,17 @@ Remember: Your primary job is to search through the user's uploaded compliance d
     input: AgentInput<IdeationInput>
   ): Promise<IdeationOutput> {
     try {
+      // Check if testing mode is enabled
+      if (testingDataService.isTestingMode()) {
+        console.log("🔧 Testing mode enabled - using Gemini with full context");
+        if (input.data.mode === "questions") {
+          return this.processTestingModeQuestions(input);
+        } else {
+          return await this.processTestingModeChat(input);
+        }
+      }
+
+      // Normal AI processing
       if (input.data.mode === "questions") {
         return await this.processQuestionModeOutput(result, input);
       } else {
@@ -467,6 +479,54 @@ ALWAYS cite your sources from the vector search results.`;
       sources,
       suggestedActions,
       relatedTopics,
+    };
+  }
+
+  /**
+   * Process testing mode questions - return hardcoded questions from testing data
+   */
+  private processTestingModeQuestions(
+    input: AgentInput<IdeationInput>
+  ): QuestionOutput {
+    const maxQuestions = input.data.maxQuestions || 5;
+    const testingQuestions = testingDataService.getIdeationQuestions();
+
+    // Filter questions based on detected frameworks if available
+    let filteredQuestions = testingQuestions;
+    if (input.data.context.detectedFrameworks && input.data.context.detectedFrameworks.length > 0) {
+      const frameworks = input.data.context.detectedFrameworks;
+      filteredQuestions = testingQuestions.filter(q =>
+        frameworks.includes(q.framework) || q.framework === "General"
+      );
+    }
+
+    // Take the requested number of questions
+    const selectedQuestions = filteredQuestions.slice(0, maxQuestions);
+
+    return {
+      questions: selectedQuestions,
+      questioningStrategy: {
+        overallGoal: "Assess compliance readiness for Project AETHER WATCH requirements (Testing Mode)",
+        progressiveDisclosure: true,
+        adaptiveFollowUp: true,
+      },
+    };
+  }
+
+  /**
+   * Process testing mode chat - return AI-powered responses using Gemini with full context
+   */
+  private async processTestingModeChat(
+    input: AgentInput<IdeationInput>
+  ): Promise<ChatOutput> {
+    const query = input.data.context.userQuery || "general compliance";
+    const testingResponse = await testingDataService.getChatResponse(query);
+
+    return {
+      response: testingResponse.response,
+      sources: testingResponse.sources,
+      suggestedActions: testingResponse.suggestedActions,
+      relatedTopics: testingResponse.relatedTopics,
     };
   }
 

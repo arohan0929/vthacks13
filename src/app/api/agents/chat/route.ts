@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   initializeAgentSystem,
   getAgentRegistry,
+  createProjectAgentTeam,
   IdeationInput,
 } from "@/lib/agents";
 import { errorLogger } from "@/lib/utils/error-logger";
@@ -97,6 +98,21 @@ export async function POST(request: NextRequest) {
     }
 
     const registry = getAgentRegistry();
+
+    // Ensure agent team exists for the project
+    try {
+      const existingAgents = registry.discover({ tags: [projectId] });
+      if (existingAgents.length === 0) {
+        await createProjectAgentTeam(projectId);
+        console.log(`Created agent team for project ${projectId}`);
+      }
+    } catch (error) {
+      console.error("Error ensuring agent team:", error);
+      return NextResponse.json(
+        { error: "Failed to initialize agent team" },
+        { status: 500 }
+      );
+    }
 
     // Find the ideation agent for this project
     const projectAgents = registry.discover({
@@ -240,6 +256,21 @@ export async function GET(request: NextRequest) {
     }
 
     const registry = getAgentRegistry();
+
+    // Ensure agent team exists for the project
+    try {
+      const existingAgents = registry.discover({ tags: [projectId] });
+      if (existingAgents.length === 0) {
+        await createProjectAgentTeam(projectId);
+        console.log(`Created agent team for project ${projectId}`);
+      }
+    } catch (error) {
+      console.error("Error ensuring agent team:", error);
+      return NextResponse.json(
+        { error: "Failed to initialize agent team" },
+        { status: 500 }
+      );
+    }
 
     // Find the ideation agent for this project
     const projectAgents = registry.discover({

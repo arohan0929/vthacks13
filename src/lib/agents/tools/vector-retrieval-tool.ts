@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BaseTool } from "./base-tool";
 import { getVectorService } from "../../vector/chroma-service";
 import { getGeminiEmbeddingService } from "../../ai/gemini-embeddings";
+import { testingDataService } from "../../services/testing-data-service";
 
 const VectorRetrievalSchema = z.object({
   projectId: z.string(),
@@ -55,6 +56,13 @@ export class VectorRetrievalTool extends BaseTool {
       const { projectId, query, limit, threshold, filters } =
         VectorRetrievalSchema.parse(input);
 
+      // Check if testing mode is enabled
+      if (testingDataService.isTestingMode()) {
+        console.log(`🔧 Testing mode: Vector search for query "${query}"`);
+        const testingResults = testingDataService.getVectorSearchResults(query);
+        return JSON.stringify(testingResults, null, 2);
+      }
+
       // Validate required fields
       if (!projectId || !query) {
         throw new Error(
@@ -72,6 +80,15 @@ export class VectorRetrievalTool extends BaseTool {
 
       try {
         vectorService = await getVectorService();
+        console.log(`Vector service initialized: ${vectorService.constructor.name}`);
+
+        // Check if collections exist for this project
+        try {
+          const collectionInfo = await vectorService.getCollectionInfo(projectId);
+          console.log(`Collection info for project ${projectId}:`, collectionInfo);
+        } catch (collectionError) {
+          console.log(`Collection check failed for project ${projectId}:`, collectionError.message);
+        }
       } catch (vectorError) {
         throw new Error(
           `Vector service unavailable: ${
@@ -136,6 +153,10 @@ export class VectorRetrievalTool extends BaseTool {
       // Perform similarity search with timeout
       let results: any;
       try {
+        console.log(`Starting vector search for query: "${query}" in project: ${projectId}`);
+        console.log(`Query options:`, queryOptions);
+        console.log(`Query embedding length: ${queryEmbedding.length}`);
+
         const searchPromise = vectorService.queryBySemanticSimilarity(
           projectId,
           queryEmbedding,
@@ -147,10 +168,18 @@ export class VectorRetrievalTool extends BaseTool {
 
         results = await Promise.race([searchPromise, timeoutPromise]);
 
+        console.log(`Raw search results:`, {
+          totalIds: results.ids?.length || 0,
+          totalDocuments: results.documents?.length || 0,
+          totalDistances: results.distances?.length || 0,
+          sampleDocuments: results.documents?.slice(0, 3)?.map((doc: string) => doc.substring(0, 100) + "...")
+        });
+
         if (!results || !Array.isArray(results.ids)) {
           throw new Error("Invalid search results format");
         }
       } catch (searchError) {
+        console.error(`Vector search error:`, searchError);
         throw new Error(
           `Vector search failed: ${
             searchError instanceof Error ? searchError.message : "Unknown error"
@@ -166,14 +195,42 @@ export class VectorRetrievalTool extends BaseTool {
         distances: [] as number[],
       };
 
+      console.log(`Filtering results with threshold: ${threshold} (distance threshold: ${1 - threshold})`);
+
       for (let i = 0; i < results.distances.length; i++) {
-        if (results.distances[i] <= 1 - threshold) {
+        const distance = results.distances[i];
+        const similarity = 1 - distance;
+        const passesThreshold = distance <= 1 - threshold;
+
+        console.log(`Result ${i}: distance=${distance.toFixed(4)}, similarity=${similarity.toFixed(4)}, passes=${passesThreshold}, preview="${results.documents[i]?.substring(0, 50)}..."`);
+
+        if (passesThreshold) {
           // ChromaDB uses distance, lower is better
           filteredResults.ids.push(results.ids[i]);
           filteredResults.documents.push(results.documents[i]);
           filteredResults.metadatas.push(results.metadatas[i]);
           filteredResults.distances.push(results.distances[i]);
         }
+      }
+
+      console.log(`Filtered results: ${filteredResults.ids.length} out of ${results.ids.length} passed threshold`);
+
+      // Handle case where no results are found
+      if (filteredResults.ids.length === 0) {
+        const response = {
+          query,
+          resultsFound: 0,
+          totalResults: results.ids.length,
+          threshold,
+          chunks: [],
+          message: "No relevant documents found for this query. This project may not have any uploaded documents yet.",
+          executionTime: Date.now(),
+          serviceInfo: {
+            vectorService: vectorService.constructor.name,
+            embeddingService: embeddingService.constructor.name,
+          },
+        };
+        return JSON.stringify(response, null, 2);
       }
 
       // Format response for agent

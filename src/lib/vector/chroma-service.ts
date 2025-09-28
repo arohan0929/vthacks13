@@ -518,30 +518,28 @@ export class ChromaVectorService {
         try {
           await this.initialize();
         } catch (initError) {
-          console.error(
-            "ChromaDB initialization failed during health check:",
-            initError
-          );
+          console.log("ChromaDB initialization failed during health check:", initError.message);
           return false;
         }
       }
 
       // If still no client, it's unhealthy
       if (!this.client) {
-        console.error("ChromaDB client is null after initialization");
+        console.log("ChromaDB client is null after initialization");
         return false;
       }
 
       // Try a simple heartbeat operation
       try {
         await this.client.heartbeat();
+        console.log("ChromaDB health check passed");
         return true;
       } catch (heartbeatError) {
-        console.error("ChromaDB heartbeat failed:", heartbeatError);
+        console.log("ChromaDB heartbeat failed:", heartbeatError.message);
         return false;
       }
     } catch (error) {
-      console.error("ChromaDB health check failed:", error);
+      console.log("ChromaDB health check failed:", error.message);
       return false;
     }
   }
@@ -575,7 +573,6 @@ export class ChromaVectorService {
 
 // Singleton instance for the application
 let chromaServiceInstance: ChromaVectorService | null = null;
-let mockServiceInstance: any = null;
 
 export function getChromaService(): ChromaVectorService {
   chromaServiceInstance ??= new ChromaVectorService();
@@ -583,29 +580,22 @@ export function getChromaService(): ChromaVectorService {
 }
 
 /**
- * Get vector service with automatic fallback to mock service
- * This ensures the system always has a working vector service
+ * Get vector service - ChromaDB only, no fallback to mock
+ * This ensures we use the real ChromaDB service
  */
-export async function getVectorService(): Promise<any> {
-  try {
-    const chromaService = getChromaService();
-    const isHealthy = await chromaService.healthCheck();
+export async function getVectorService(): Promise<ChromaVectorService> {
+  const chromaService = getChromaService();
 
-    if (isHealthy) {
-      return chromaService;
-    } else {
-      throw new Error("ChromaDB is not healthy");
-    }
-  } catch (error) {
-    console.log("ChromaDB not available, falling back to mock service:", error);
-
-    // Import mock service dynamically to avoid circular dependencies
-    if (!mockServiceInstance) {
-      const { MockVectorService } = await import("./mock-vector-service");
-      mockServiceInstance = new MockVectorService();
-      await mockServiceInstance.initialize();
-    }
-
-    return mockServiceInstance;
+  // Initialize if not already done
+  if (!chromaService.initialized) {
+    await chromaService.initialize();
   }
+
+  // Verify the service is healthy
+  const isHealthy = await chromaService.healthCheck();
+  if (!isHealthy) {
+    throw new Error("ChromaDB service is not healthy. Please ensure ChromaDB server is running on localhost:8000");
+  }
+
+  return chromaService;
 }

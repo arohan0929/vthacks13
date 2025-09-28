@@ -60,8 +60,8 @@ export function ScoreTrendChart({
     // Transform data for chart
     const chartData = trends.map(trend => {
       const dataPoint: any = {
-        date: trend.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        fullDate: trend.date,
+        date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        fullDate: new Date(trend.date),
         overall: trend.overallScore,
       };
 
@@ -274,7 +274,7 @@ export function ScoreTrendChart({
             <div className="text-xs text-enterprise-text-secondary font-medium">Time Span</div>
             <div className="text-lg font-semibold text-enterprise-text-primary">
               {trends.length > 1
-                ? Math.ceil((trends[trends.length - 1].date.getTime() - trends[0].date.getTime()) / (1000 * 60 * 60 * 24))
+                ? Math.ceil((new Date(trends[trends.length - 1].date).getTime() - new Date(trends[0].date).getTime()) / (1000 * 60 * 60 * 24))
                 : 0} days
             </div>
           </div>

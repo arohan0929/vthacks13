@@ -21,7 +21,9 @@ import {
   FileText,
   Lightbulb,
   Folder,
-  ArrowLeft
+  ArrowLeft,
+  HelpCircle,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -109,14 +111,24 @@ const getProjectNavItems = (projectId: string): NavItem[] => [
     icon: Folder,
   },
   {
-    title: "Ideate",
-    href: `/projects/${projectId}/ideate`,
-    icon: Lightbulb,
+    title: "Q/A",
+    href: `/projects/${projectId}/qa`,
+    icon: HelpCircle,
+  },
+  {
+    title: "Research",
+    href: `/projects/${projectId}/research`,
+    icon: MessageSquare,
   },
   {
     title: "Compliance Report",
     href: `/projects/${projectId}/compliance-report`,
     icon: Shield,
+  },
+  {
+    title: "Roadmap",
+    href: `/projects/${projectId}/improve`,
+    icon: TrendingUp,
   },
 ];
 

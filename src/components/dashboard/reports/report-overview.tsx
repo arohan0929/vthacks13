@@ -62,7 +62,7 @@ export function ReportOverview({
         <div>
           <h2 className="text-2xl font-bold text-enterprise-text-primary">Compliance Overview</h2>
           <p className="text-enterprise-text-secondary">
-            Last updated: {overview.lastAssessment.toLocaleDateString()} at {overview.lastAssessment.toLocaleTimeString()}
+            Last updated: {new Date(overview.lastAssessment).toLocaleDateString()} at {new Date(overview.lastAssessment).toLocaleTimeString()}
           </p>
         </div>
         <div className="flex gap-2">

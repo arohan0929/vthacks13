@@ -10,6 +10,7 @@ import {
   ReportGenerationRequest,
   ReportGenerationResponse,
 } from '@/lib/types/report-types';
+import { testingDataService } from './testing-data-service';
 
 interface AgentResults {
   classification?: any;
@@ -37,10 +38,17 @@ export class ReportService {
     documents: any[],
     existingTrends?: ScoreTrend[]
   ): Promise<ReportData> {
+    // Check if testing mode is enabled
+    if (testingDataService.isTestingMode()) {
+      console.log("🔧 Testing mode enabled - generating hardcoded report data");
+      return this.generateTestingModeReportData(projectId, documents, existingTrends);
+    }
+
+    // Normal processing
     const metadata = this.generateMetadata(projectId, agentResults);
 
-    // Extract framework scores from grading agent
-    const frameworkScores = this.extractFrameworkScores(agentResults.grading);
+    // Extract framework scores from grading agent (with classification fallback)
+    const frameworkScores = this.extractFrameworkScores(agentResults.grading, agentResults.classification);
 
     // Extract compliance gaps from grading and improvement agents
     const gaps = this.extractComplianceGaps(agentResults.grading, agentResults.improvement);
@@ -95,25 +103,49 @@ export class ReportService {
     };
   }
 
-  private extractFrameworkScores(gradingResults: any): FrameworkScore[] {
-    if (!gradingResults?.frameworkScores && !gradingResults?.data?.frameworkScores) {
-      return [];
+  private extractFrameworkScores(gradingResults: any, classificationResults?: any): FrameworkScore[] {
+    console.log('Extracting framework scores:', {
+      gradingResults: JSON.stringify(gradingResults, null, 2),
+      classificationResults: JSON.stringify(classificationResults, null, 2)
+    });
+
+    // First try to get framework scores from grading results
+    if (gradingResults?.frameworkScores || gradingResults?.data?.frameworkScores) {
+      const scores = gradingResults.frameworkScores || gradingResults.data.frameworkScores || [];
+
+      return scores.map((score: any) => ({
+        framework: score.framework,
+        overallScore: score.overallScore || 0,
+        maxScore: score.maxScore || 100,
+        percentage: score.percentage || Math.round((score.overallScore / (score.maxScore || 100)) * 100),
+        confidence: score.confidence || 0.8,
+        priority: this.determinePriority(score.overallScore),
+        categoryScores: score.categoryScores || {},
+        strengths: score.strengths || [],
+        criticalIssues: score.criticalIssues || [],
+        readinessLevel: this.determineReadinessLevel(score.overallScore),
+      }));
     }
 
-    const scores = gradingResults.frameworkScores || gradingResults.data.frameworkScores || [];
+    // If no grading results, fallback to classification results
+    if (classificationResults?.detectedFrameworks || classificationResults?.data?.detectedFrameworks) {
+      const frameworks = classificationResults.detectedFrameworks || classificationResults.data.detectedFrameworks || [];
 
-    return scores.map((score: any) => ({
-      framework: score.framework,
-      overallScore: score.overallScore || 0,
-      maxScore: score.maxScore || 100,
-      percentage: score.percentage || Math.round((score.overallScore / (score.maxScore || 100)) * 100),
-      confidence: score.confidence || 0.8,
-      priority: this.determinePriority(score.overallScore),
-      categoryScores: score.categoryScores || {},
-      strengths: score.strengths || [],
-      criticalIssues: score.criticalIssues || [],
-      readinessLevel: this.determineReadinessLevel(score.overallScore),
-    }));
+      return frameworks.map((framework: any) => ({
+        framework: framework.name,
+        overallScore: Math.round(framework.confidence * 100),
+        maxScore: 100,
+        percentage: Math.round(framework.confidence * 100),
+        confidence: framework.confidence || 0.8,
+        priority: framework.priority || 'medium',
+        categoryScores: {},
+        strengths: framework.requirements?.slice(0, 3) || [],
+        criticalIssues: [],
+        readinessLevel: this.determineReadinessLevel(Math.round(framework.confidence * 100)),
+      }));
+    }
+
+    return [];
   }
 
   private extractComplianceGaps(gradingResults: any, improvementResults: any): ComplianceGap[] {
@@ -352,10 +384,19 @@ export class ReportService {
   }
 
   private calculateFrameworkCoverage(doc: any, agentResults: AgentResults) {
-    // Default framework coverage - would be more sophisticated in production
+    // Extract frameworks from classification results instead of hardcoding
+    if (agentResults.classification?.detectedFrameworks) {
+      return agentResults.classification.detectedFrameworks.map((framework: any) => ({
+        framework: framework.name,
+        coverage: Math.round(framework.confidence * 100),
+        gaps: framework.requirements?.filter((_: any, i: number) => i % 2 === 0) || [],
+        strengths: framework.requirements?.filter((_: any, i: number) => i % 2 === 1) || []
+      }));
+    }
+
+    // Fallback only if no classification results
     return [
-      { framework: 'GDPR', coverage: 75, gaps: [], strengths: ['Data handling documented'] },
-      { framework: 'SOX', coverage: 60, gaps: ['Access controls unclear'], strengths: [] },
+      { framework: 'General Compliance', coverage: 50, gaps: ['Framework detection needed'], strengths: [] }
     ];
   }
 
@@ -402,6 +443,244 @@ export class ReportService {
       case 'low': return '#16A34A';
       default: return '#6B7280';
     }
+  }
+
+  /**
+   * Generate hardcoded report data for testing mode
+   */
+  private generateTestingModeReportData(
+    projectId: string,
+    documents: any[],
+    existingTrends?: ScoreTrend[]
+  ): ReportData {
+    // Generate hardcoded framework scores based on example.md assessment
+    const frameworkScores: FrameworkScore[] = [
+      {
+        framework: 'ITAR',
+        overallScore: 65,
+        maxScore: 100,
+        percentage: 65,
+        confidence: 0.95,
+        priority: 'critical',
+        categoryScores: {
+          'Export Control': { score: 45, maxScore: 100, percentage: 45 },
+          'Personnel Verification': { score: 80, maxScore: 100, percentage: 80 },
+          'Technical Data Protection': { score: 70, maxScore: 100, percentage: 70 }
+        },
+        strengths: [
+          'U.S. Person verification procedures documented',
+          'Technical data classification implemented'
+        ],
+        criticalIssues: [
+          'Li Chen (foreign national) needs export license for ITAR data access',
+          'International collaboration requires DDTC approval'
+        ],
+        readinessLevel: 'partially_ready'
+      },
+      {
+        framework: 'CMMC Level 2',
+        overallScore: 72,
+        maxScore: 100,
+        percentage: 72,
+        confidence: 0.88,
+        priority: 'critical',
+        categoryScores: {
+          'Access Control': { score: 80, maxScore: 100, percentage: 80 },
+          'Audit & Accountability': { score: 65, maxScore: 100, percentage: 65 },
+          'System Protection': { score: 75, maxScore: 100, percentage: 75 },
+          'Incident Response': { score: 60, maxScore: 100, percentage: 60 }
+        },
+        strengths: [
+          'MFA implementation verified',
+          'TLS encryption with FIPS validation',
+          'Least privilege IAM roles configured'
+        ],
+        criticalIssues: [
+          'Audit log immutability gaps (WORM storage needed)',
+          'Incident response plan missing DFARS reporting procedures'
+        ],
+        readinessLevel: 'mostly_ready'
+      },
+      {
+        framework: 'NIST SP 800-171',
+        overallScore: 68,
+        maxScore: 100,
+        percentage: 68,
+        confidence: 0.90,
+        priority: 'high',
+        categoryScores: {
+          'CUI Protection': { score: 70, maxScore: 100, percentage: 70 },
+          'Encryption': { score: 85, maxScore: 100, percentage: 85 },
+          'Access Controls': { score: 75, maxScore: 100, percentage: 75 },
+          'Media Protection': { score: 45, maxScore: 100, percentage: 45 }
+        },
+        strengths: [
+          'FIPS-validated encryption implemented',
+          'CUI data classification in place',
+          'Network segmentation configured'
+        ],
+        criticalIssues: [
+          'Data Management Plan incomplete',
+          'Media sanitization procedures not documented'
+        ],
+        readinessLevel: 'partially_ready'
+      }
+    ];
+
+    // Generate hardcoded compliance gaps based on example.md test results
+    const gaps: ComplianceGap[] = [
+      {
+        id: 'gap-foreign-national-access',
+        framework: 'ITAR',
+        category: 'Export Control',
+        requirement: 'U.S. Person access restriction',
+        description: 'Li Chen (PRC citizen) requires export license before accessing ITAR-controlled technical data',
+        severity: 'critical',
+        currentScore: 0,
+        maxScore: 100,
+        impact: 95,
+        effort: 'medium',
+        estimatedHours: 24,
+        currentStatus: 'missing',
+        evidence: [{
+          source: 'Personnel Roster',
+          content: 'Li Chen - Ph.D. Student, Purdue University, People\'s Republic of China, U.S. Person Status: N',
+          relevance: 0.95
+        }],
+        recommendations: [
+          'Submit DDTC export license application immediately',
+          'Implement repository access controls to block foreign national access',
+          'Establish temporary data segregation procedures'
+        ]
+      },
+      {
+        id: 'gap-audit-immutability',
+        framework: 'CMMC Level 2',
+        category: 'Audit & Accountability',
+        requirement: 'AU-02 Log immutability',
+        description: 'Audit log immutability not verified - WORM storage implementation needed',
+        severity: 'high',
+        currentScore: 40,
+        maxScore: 100,
+        impact: 75,
+        effort: 'high',
+        estimatedHours: 80,
+        currentStatus: 'partial',
+        evidence: [{
+          source: 'Test Results AU-02',
+          content: 'Partial implementation - WORM storage not verified, monitoring for drift needed',
+          relevance: 0.88
+        }],
+        recommendations: [
+          'Enable object lock/WORM on audit log storage',
+          'Update SIEM parsers for immutable log format',
+          'Implement drift monitoring for configuration changes'
+        ]
+      },
+      {
+        id: 'gap-incident-response',
+        framework: 'CMMC Level 2',
+        category: 'Incident Response',
+        requirement: 'IR-01 DFARS reporting',
+        description: 'Incident response plan missing DIBNet reporting procedures and 72-hour timeline',
+        severity: 'high',
+        currentScore: 60,
+        maxScore: 100,
+        impact: 70,
+        effort: 'medium',
+        estimatedHours: 24,
+        currentStatus: 'partial',
+        evidence: [{
+          source: 'IR Plan Review',
+          content: 'Plan exists but lacks DFARS 252.204-7012 specific reporting requirements',
+          relevance: 0.82
+        }],
+        recommendations: [
+          'Update IR plan with DIBNet reporting procedures',
+          'Add 72-hour reporting timeline requirements',
+          'Conduct tabletop exercise to test procedures'
+        ]
+      },
+      {
+        id: 'gap-data-management-plan',
+        framework: 'NIST SP 800-171',
+        category: 'Data Management',
+        requirement: 'Complete DMP for CUI',
+        description: 'Data Management Plan incomplete - missing SSP references and media sanitization procedures',
+        severity: 'medium',
+        currentScore: 45,
+        maxScore: 100,
+        impact: 60,
+        effort: 'medium',
+        estimatedHours: 24,
+        currentStatus: 'partial',
+        evidence: [{
+          source: 'DMP Review',
+          content: 'Document incomplete - lacks incident response plan, logging requirements, and media sanitization sections',
+          relevance: 0.75
+        }],
+        recommendations: [
+          'Complete missing DMP sections per NIST 800-171 requirements',
+          'Add System Security Plan (SSP) references',
+          'Document media sanitization procedures per NIST 800-88'
+        ]
+      }
+    ];
+
+    // Generate overview
+    const overview = this.generateOverview(frameworkScores, gaps, documents);
+
+    // Generate document analysis
+    const documentAnalysis: DocumentAnalysis[] = documents.map(doc => ({
+      documentId: doc.id || 'example-md',
+      documentName: doc.name || 'Project AETHER WATCH Compliance Assessment',
+      documentType: doc.type || 'compliance_assessment',
+      coverageScore: 85,
+      frameworkCoverage: [
+        { framework: 'ITAR', coverage: 95, gaps: ['Export license procedures'], strengths: ['Personnel verification', 'Technical data classification'] },
+        { framework: 'CMMC Level 2', coverage: 80, gaps: ['Log immutability', 'IR procedures'], strengths: ['Access controls', 'Encryption'] },
+        { framework: 'NIST SP 800-171', coverage: 75, gaps: ['DMP completion', 'Media sanitization'], strengths: ['CUI classification', 'Network security'] }
+      ],
+      keyFindings: [
+        'ITAR export control requirements identified for international collaboration',
+        'CMMC Level 2 controls mostly implemented with specific gaps',
+        'CUI protection measures in place but policy documentation incomplete'
+      ],
+      recommendations: [
+        'Immediate: Submit export license for Li Chen access',
+        'High priority: Implement audit log immutability',
+        'Medium priority: Complete Data Management Plan'
+      ],
+      lastAnalyzed: new Date()
+    }));
+
+    // Generate trends
+    const trends = this.generateTrends(frameworkScores, existingTrends);
+
+    // Generate visualizations
+    const visualizations = this.generateVisualizationData(frameworkScores, gaps, trends);
+
+    // Generate metadata
+    const metadata: ReportMetadata = {
+      reportId: `testing-report-${projectId}-${Date.now()}`,
+      projectId,
+      generatedAt: new Date(),
+      generatedBy: 'testing-mode',
+      analysisVersion: '1.0.0-testing',
+      processingTime: 150, // Simulated processing time
+      agentsUsed: ['classification', 'grading', 'improvement', 'ideation'],
+      documentVersions: documents.map(doc => ({ id: doc.id || 'example-md', version: '1.0.0' }))
+    };
+
+    return {
+      overview,
+      frameworkScores,
+      gaps,
+      documentAnalysis,
+      trends,
+      visualizations,
+      metadata
+    };
   }
 }
 
